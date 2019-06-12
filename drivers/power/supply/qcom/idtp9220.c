@@ -1,5 +1,4 @@
 /**
- * Copyright “Copyright (C) 2018 XiaoMi, Inc
  */
 
 #include <linux/module.h>

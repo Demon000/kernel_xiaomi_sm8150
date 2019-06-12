@@ -2,7 +2,6 @@
  * Private functions for Mini-XML, a small XML file parsing library.
  *
  * Copyright 2003-2017 by Michael R Sweet.
- * Copyright (C) 2019 XiaoMi, Inc.
  *
  * These coded instructions, statements, and computer programs are the
  * property of Michael R Sweet and are protected by Federal copyright
