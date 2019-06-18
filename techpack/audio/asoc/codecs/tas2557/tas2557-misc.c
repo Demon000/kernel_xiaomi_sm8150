@@ -39,7 +39,7 @@
 #include <linux/fcntl.h>
 #include <linux/miscdevice.h>
 #include <linux/uaccess.h>
-#include <linux/mfd/spk-id.h>
+#include "../spk-id.h"
 #include <linux/dma-mapping.h>
 
 #include "tas2557.h"

@@ -39,7 +39,7 @@
 #include <linux/completion.h>
 #include <linux/spi/spi.h>
 #include <linux/err.h>
-#include <linux/mfd/spk-id.h>
+#include "../spk-id.h"
 
 #include "wm_adsp.h"
 #include "cs35l41.h"

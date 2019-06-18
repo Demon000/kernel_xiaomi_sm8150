@@ -44,7 +44,7 @@
 #include <sound/soc.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
-#include <linux/mfd/spk-id.h>
+#include "../spk-id.h"
 
 #include "tas2557-core.h"
 #include "tas2557-codec.h"
