@@ -27,6 +27,7 @@
 
 #define VENDOR_ID_UNKNOWN	4
 
-extern int spk_id_get_pin_3state(struct device_node *np);
+int spk_id_get_pin_3state(struct device_node *np);
+int spk_id_get(struct device_node *np);
 
 #endif

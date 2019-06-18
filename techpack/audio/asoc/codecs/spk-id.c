@@ -103,6 +103,35 @@ int spk_id_get_pin_3state(struct device_node *np)
 }
 EXPORT_SYMBOL(spk_id_get_pin_3state);
 
+int spk_id_get(struct device_node *np)
+{
+	int id;
+	int state;
+
+	state = spk_id_get_pin_3state(np);
+	if (state < 0) {
+		pr_err("%s: Can not get id pin state, %d\n", __func__, state);
+		return VENDOR_ID_NONE;
+	}
+
+	switch (state) {
+	case PIN_PULL_DOWN:
+		id = VENDOR_ID_AAC;
+		break;
+	case PIN_PULL_UP:
+		id = VENDOR_ID_UNKNOWN;
+		break;
+	case PIN_FLOAT:
+		id = VENDOR_ID_GOER;
+		break;
+	default:
+		id = VENDOR_ID_UNKNOWN;
+		break;
+	}
+	return id;
+}
+EXPORT_SYMBOL(spk_id_get);
+
 static int spk_id_probe(struct platform_device *pdev)
 {
 	int ret = 0;
