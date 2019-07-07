@@ -101,7 +101,6 @@ struct dsi_backlight_config {
 	u32 bl_scale_ad;
 
 	int en_gpio;
-	bool dcs_type_ss;
 	/* PWM params */
 	bool pwm_pmi_control;
 	u32 pwm_pmic_bank;
@@ -148,17 +147,6 @@ struct drm_panel_esd_config {
 	u8 *return_buf;
 	u8 *status_buf;
 	u32 groups;
-	int esd_err_irq_gpio;
-	int esd_err_irq;
-	int esd_err_irq_flags;
-};
-
-struct dsi_read_config {
-	bool enabled;
-	struct dsi_panel_cmd_set read_cmd;
-	u32 cmds_rlen;
-	u32 valid_bits;
-	u8 rbuf[64];
 };
 
 struct dsi_panel {
@@ -202,38 +190,10 @@ struct dsi_panel {
 	bool te_using_watchdog_timer;
 	u32 qsync_min_fps;
 
-	bool dispparam_enabled;
-	u32 skip_dimmingon;
-
 	char dsc_pps_cmd[DSI_CMD_PPS_SIZE];
 	enum dsi_dms_mode dms_mode;
 
 	bool sync_broadcast_en;
-
-	u32 panel_on_dimming_delay;
-	struct delayed_work cmds_work;
-	u32 last_bl_lvl;
-	s32 backlight_delta;
-
-	bool fod_hbm_enabled; /* prevent set DISPPARAM_DOZE_BRIGHTNESS_HBM/LBM in FOD HBM */
-	u32 doze_backlight_threshold;
-	u32 fod_off_dimming_delay;
-	ktime_t fod_hbm_off_time;
-	ktime_t fod_backlight_off_time;
-
-	u32 panel_p3_mode;
-	u32 close_crc;
-
-	bool elvss_dimming_check_enable;
-	struct dsi_read_config elvss_dimming_cmds;
-	struct dsi_panel_cmd_set elvss_dimming_offset;
-	struct dsi_panel_cmd_set hbm_fod_on;
-	struct dsi_panel_cmd_set hbm_fod_off;
-
-	bool fod_backlight_flag;
-	u32 fod_target_backlight;
-	bool fod_flag;
-	bool in_aod; /* set  DISPPARAM_DOZE_BRIGHTNESS_HBM/LBM only in AOD */
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -314,8 +274,6 @@ int dsi_panel_unprepare(struct dsi_panel *panel);
 int dsi_panel_post_unprepare(struct dsi_panel *panel);
 
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl);
-
-int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl);
 
 int dsi_panel_update_pps(struct dsi_panel *panel);
 
