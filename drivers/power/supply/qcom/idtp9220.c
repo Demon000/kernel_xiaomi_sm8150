@@ -20,12 +20,6 @@
 #include <linux/interrupt.h>
 #include <linux/power_supply.h>
 
-/*
-#ifdef CONFIG_DRM
-#include <drm/drm_notifier.h>
-#endif
-*/
-
 static struct idtp9220_device_info *g_di;
 
 struct idtp9220_access_func {
