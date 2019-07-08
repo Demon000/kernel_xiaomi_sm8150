@@ -74,6 +74,8 @@ EXPORT_SYMBOL(msm_drm_unregister_client);
  */
 int msm_drm_notifier_call_chain(unsigned long val, void *v)
 {
+	struct msm_drm_notifier *notify_data = v;
+	DRM_ERROR("%s: val: %lu, data: %d\n", __func__, val, *(int *)notify_data->data);
 	return blocking_notifier_call_chain(&msm_drm_notifier_list, val,
 					    v);
 }
