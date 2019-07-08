@@ -183,14 +183,16 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 {
 	struct dsi_display *dsi_display = display;
 	struct dsi_panel *panel;
+	struct drm_device *drm_dev;
 	u32 bl_scale, bl_scale_ad;
 	u64 bl_temp;
 	int rc = 0;
 
-	if (dsi_display == NULL || dsi_display->panel == NULL)
+	if (dsi_display == NULL || dsi_display->panel == NULL || dsi_display->drm_dev == NULL)
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+	drm_dev = dsi_display->drm_dev;
 
 	mutex_lock(&panel->panel_lock);
 	if (!dsi_panel_initialized(panel)) {
@@ -218,9 +220,19 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		goto error;
 	}
 
-	rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
-	if (rc)
-		pr_err("unable to set backlight\n");
+	if (drm_dev->doze_state) {
+		rc = dsi_panel_set_doze_backlight(panel, (u32)bl_temp);
+		if (rc)
+			pr_err("unable to set doze backlight\n");
+
+		rc = dsi_panel_enable_doze_backlight(panel, (u32)bl_temp);
+		if (rc)
+			pr_err("unable to enable doze backlight\n");
+	} else {
+		rc = dsi_panel_set_backlight(panel, (u32)bl_temp);
+		if (rc)
+			pr_err("unable to set backlight\n");
+	}
 
 	rc = dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
@@ -1049,6 +1061,11 @@ int dsi_display_set_power(struct drm_connector *connector,
 	int event = power_mode;
 	int rc = 0;
 
+	if (!connector || !connector->dev) {
+		pr_err("invalid connector/dev\n");
+		return -EINVAL;
+	}
+
 	if (!display || !display->panel) {
 		pr_err("invalid display/panel\n");
 		return -EINVAL;
@@ -1059,11 +1076,13 @@ int dsi_display_set_power(struct drm_connector *connector,
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
+		connector->dev->doze_state = true;
 		rc = dsi_panel_set_lp1(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;
 	case SDE_MODE_DPMS_LP2:
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
+		connector->dev->doze_state = true;
 		rc = dsi_panel_set_lp2(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;
@@ -1073,6 +1092,7 @@ int dsi_display_set_power(struct drm_connector *connector,
 			break;
 
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
+		connector->dev->doze_state = false;
 		rc = dsi_panel_set_nolp(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;
