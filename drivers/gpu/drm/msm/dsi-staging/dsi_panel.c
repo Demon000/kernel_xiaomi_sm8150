@@ -643,11 +643,15 @@ int dsi_panel_set_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 		if (rc)
 			pr_err("[%s] failed to send DSI_CMD_SET_DOZE_HBM cmd, rc=%d\n",
 					panel->name, rc);
+		else
+			pr_err("doze1\n");
 	} else if (bl_lvl > 0) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_LBM);
 		if (rc)
 			pr_err("[%s] failed to send DSI_CMD_SET_DOZE_LBM cmd, rc=%d\n",
 					panel->name, rc);
+		else
+			pr_err("doze2\n");
 	}
 
 	return rc;
