@@ -198,6 +198,8 @@ struct dsi_panel {
 
 	bool doze_state;
 	u32 doze_backlight_threshold;
+
+	bool fod_hbm_enabled;
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)
@@ -308,5 +310,7 @@ void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
 int dsi_panel_set_doze_backlight(struct dsi_panel *panel, u32 bl_lvl);
 
 int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl);
+
+int dsi_panel_set_fod_hbm_backlight(struct dsi_panel *panel, bool status);
 
 #endif /* _DSI_PANEL_H_ */

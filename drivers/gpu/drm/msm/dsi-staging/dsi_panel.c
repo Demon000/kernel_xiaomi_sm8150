@@ -621,6 +621,9 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 		return -EINVAL;
 	}
 
+	if (panel->fod_hbm_enabled)
+		return 0;
+
 	dsi = &panel->mipi_device;
 
 	if (panel->bl_config.dcs_type_ss)
@@ -637,6 +640,9 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 int dsi_panel_set_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 {
 	int rc = 0;
+
+	if (panel->fod_hbm_enabled)
+		return 0;
 
 	if (bl_lvl > panel->doze_backlight_threshold) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DOZE_HBM);
@@ -659,12 +665,39 @@ int dsi_panel_set_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 
 int dsi_panel_enable_doze_backlight(struct dsi_panel *panel, u32 bl_lvl)
 {
+	if (panel->fod_hbm_enabled)
+		return 0;
+
 	return dsi_panel_update_backlight(panel, bl_lvl);
 }
 
-int dsi_panel_set_hbm_fod_status(struct dsi_panel *panel, bool status) {
+int dsi_panel_set_fod_hbm_backlight(struct dsi_panel *panel, bool status) {
+	u32 bl_level = panel->bl_config.bl_level;
+	int rc = 0;
 
+	panel->fod_hbm_enabled = status;	
 
+	if (status) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_FOD_ON);
+		if (rc)
+			pr_err("[%s] failed to send DSI_CMD_SET_DISP_HBM_FOD_ON cmd, rc=%d\n",
+					panel->name, rc);
+	} else {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_DISP_HBM_FOD_OFF);
+		if (rc)
+                        pr_err("[%s] failed to send DSI_CMD_SET_DISP_HBM_FOD_OFF cmd, rc=%d\n",
+                                        panel->name, rc);
+
+		if (!panel->doze_state) {
+			return;
+		}
+
+		rc = dsi_panel_set_doze_backlight(panel, bl_level);
+		if (rc)
+			pr_err("unable to set doze backlight\n");
+	}
+
+	return rc;
 }
 
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
@@ -3010,6 +3043,7 @@ static int dsi_panel_parse_mi_config(struct dsi_panel *panel,
 	}
 
 	panel->doze_state = false;
+	panel->fod_hbm_enabled = false;
 
 	return rc;
 }
