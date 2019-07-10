@@ -220,7 +220,7 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		goto error;
 	}
 
-	if (drm_dev->doze_state) {
+	if (panel->doze_state) {
 		rc = dsi_panel_set_doze_backlight(panel, (u32)bl_temp);
 		if (rc)
 			pr_err("unable to set doze backlight\n");
@@ -1065,11 +1065,6 @@ int dsi_display_set_power(struct drm_connector *connector,
 	int event = power_mode;
 	int rc = 0;
 
-	if (!connector || !connector->dev) {
-		pr_err("invalid connector/dev\n");
-		return -EINVAL;
-	}
-
 	if (!display || !display->panel) {
 		pr_err("invalid display/panel\n");
 		return -EINVAL;
@@ -1080,13 +1075,13 @@ int dsi_display_set_power(struct drm_connector *connector,
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
-		connector->dev->doze_state = true;
+		display->panel->doze_state = true;
 		rc = dsi_panel_set_lp1(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;
 	case SDE_MODE_DPMS_LP2:
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
-		connector->dev->doze_state = true;
+		display->panel->doze_state = true;
 		rc = dsi_panel_set_lp2(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;
@@ -1096,7 +1091,7 @@ int dsi_display_set_power(struct drm_connector *connector,
 			break;
 
 		msm_drm_notifier_call_chain(MSM_DRM_EARLY_EVENT_BLANK, &notify_data);
-		connector->dev->doze_state = false;
+		display->panel->doze_state = false;
 		rc = dsi_panel_set_nolp(display->panel);
 		msm_drm_notifier_call_chain(MSM_DRM_EVENT_BLANK, &notify_data);
 		break;

@@ -3009,6 +3009,8 @@ static int dsi_panel_parse_mi_config(struct dsi_panel *panel,
 		pr_info("doze backlight threshold %d \n", panel->doze_backlight_threshold);
 	}
 
+	panel->doze_state = false;
+
 	return rc;
 }
 

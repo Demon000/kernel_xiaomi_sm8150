@@ -196,6 +196,7 @@ struct dsi_panel {
 
 	bool sync_broadcast_en;
 
+	bool doze_state;
 	u32 doze_backlight_threshold;
 };
 
