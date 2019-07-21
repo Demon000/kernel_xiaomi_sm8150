@@ -151,8 +151,8 @@ ifdef CONFIG_SND_SOC_WCD_IRQ
 	CORE_OBJS += wcd-irq.o
 endif
 
-ifdef CONFIG_MACH_XIAOMI_SM8150
-	CORE_OBJS += spk-id.o
+ifdef CONFIG_SND_SOC_SPK_ID
+	SPKID_OBJS += spk-id.o
 endif
 
 LINUX_INC +=	-Iinclude/linux
@@ -240,6 +240,9 @@ mbhc_dlkm-y := $(MBHC_OBJS)
 
 obj-$(CONFIG_SND_SOC_MSM_HDMI_CODEC_RX) += hdmi_dlkm.o
 hdmi_dlkm-y := $(HDMICODEC_OBJS)
+
+obj-$(CONFIG_SND_SOC_SPK_ID) += spkid_objs.o
+spkid_objs-y := $(SPKID_OBJS)
 
 # inject some build related information
 DEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
