@@ -1766,7 +1766,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	len = strlen(filename->name);
 
 	if ((memcmp(filename->name, "/vendor", 7) == 0) ||
-			(memcmp(filename->name, "/system/vendor", 14) == 0)) {
+			(memcmp(filename->name, "/system", 7) == 0)) {
 		if (!search_word(&root_node, filename->name, len)) {
 			insert_word(&root_node, filename->name, len);
 			pr_info("%s\n", filename->name);
