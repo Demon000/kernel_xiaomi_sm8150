@@ -1129,7 +1129,8 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 	len = strlen(tmp->name);
 
 	if ((memcmp(tmp->name, "/vendor", 7) == 0) ||
-			(memcmp(tmp->name, "/system", 7) == 0)) {
+			(memcmp(tmp->name, "/system", 7) == 0) ||
+			(memcmp(tmp->name, "/etc", 4) == 0)) {
 		if (!search_word(&root_node, tmp->name, len)) {
 			insert_word(&root_node, tmp->name, len);
 			pr_info("%s\n", tmp->name);
