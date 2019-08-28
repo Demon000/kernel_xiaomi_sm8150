@@ -802,10 +802,6 @@ static int smb5_parse_dt(struct smb5 *chip)
 	if (rc < 0)
 		return rc;
 
-	rc = smblib_get_iio_channel(chg, "project_gpio6", &chg->iio.project_gpio6);
-	if (rc < 0)
-		return rc;
-
 	chip->dt.disable_suspend_on_collapse = of_property_read_bool(node,
 					"qcom,disable-suspend-on-collapse");
 	return 0;
