@@ -127,7 +127,6 @@ enum print_reason {
 
 /* cutoff voltage threshold */
 #define CUTOFF_VOL_THR		3400000
-#define RECHARGE_SOC_THR		99
 
 #define BARK_TIMER_LONG		128
 #define BARK_TIMER_NORMAL		16

@@ -2603,13 +2603,6 @@ int smblib_set_prop_rechg_soc_thresh(struct smb_charger *chg,
 	int rc;
 	u8 new_thr = DIV_ROUND_CLOSEST(val->intval * 255, 100);
 
-	/*
-	 * As DIV_ROUND_CLOSEST cal cause new_thr to 252, we add 1 more to
-	 * improve recharging UI soc still to 100% to improve user experience.
-	 */
-	if (val->intval == RECHARGE_SOC_THR)
-		new_thr += 1;
-
 	rc = smblib_write(chg, CHARGE_RCHG_SOC_THRESHOLD_CFG_REG,
 			new_thr);
 	if (rc < 0) {
