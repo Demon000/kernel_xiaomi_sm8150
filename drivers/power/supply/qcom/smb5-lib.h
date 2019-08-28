@@ -75,6 +75,7 @@ enum print_reason {
 #define JEITA_VOTER		"JEITA_VOTER"
 #define FCC_STEPPER_VOTER		"FCC_STEPPER_VOTER"
 #define SW_THERM_REGULATION_VOTER	"SW_THERM_REGULATION_VOTER"
+#define LIQUID_DETECTION_VOTER		"LIQUID_DETECTION_VOTER"
 #define QC2_UNSUPPORTED_VOTER		"QC2_UNSUPPORTED_VOTER"
 #define JEITA_ARB_VOTER			"JEITA_ARB_VOTER"
 #define MOISTURE_VOTER			"MOISTURE_VOTER"
@@ -373,6 +374,7 @@ struct smb_iio {
 	struct iio_channel	*die_temp_chan;
 	struct iio_channel	*skin_temp_chan;
 	struct iio_channel	*smb_temp_chan;
+	struct iio_channel	*hw_version_gpio5;
 };
 
 struct smb_charger {
@@ -390,6 +392,8 @@ struct smb_charger {
 	int			otg_delay_ms;
 	int			*weak_chg_icl_ua;
 	bool			pd_not_supported;
+	bool			init_once;
+	bool			support_liquid;
 	bool			dynamic_fv_enabled;
 
 	/* locks */
@@ -442,6 +446,7 @@ struct smb_charger {
 	struct work_struct	pl_update_work;
 	struct work_struct	jeita_update_work;
 	struct work_struct	moisture_protection_work;
+	struct work_struct	lpd_disable_chg_work;
 	struct delayed_work	ps_change_timeout_work;
 	struct delayed_work	clear_hdc_work;
 	struct delayed_work	icl_change_work;
@@ -482,6 +487,7 @@ struct smb_charger {
 	int			boost_threshold_ua;
 	int			system_temp_level;
 	int			thermal_levels;
+	int			lpd_levels;
 	int			dc_temp_level;
 	int			dc_thermal_levels;
 #ifdef CONFIG_THERMAL
@@ -507,6 +513,7 @@ struct smb_charger {
 	int			fake_batt_status;
 	bool			step_chg_enabled;
 	bool			sw_jeita_enabled;
+	bool			lpd_enabled;
 	bool			is_hdc;
 	bool			chg_done;
 	int			connector_type;
@@ -534,6 +541,7 @@ struct smb_charger {
 	u8			typec_try_mode;
 	enum lpd_stage		lpd_stage;
 	enum lpd_reason		lpd_reason;
+	bool			lpd_status;
 	bool			fcc_stepper_enable;
 	int			die_temp;
 	int			smb_temp;
@@ -797,6 +805,10 @@ int smblib_set_wirless_cp_enable(struct smb_charger *chg,
 				const union power_supply_propval *val);
 int smblib_set_wirless_power_good_enable(struct smb_charger *chg,
 				const union power_supply_propval *val);
+int smblib_get_prop_liquid_status(struct smb_charger *chg,
+					union power_supply_propval *val);
+
+bool smblib_support_liquid_feature(struct smb_charger *chg);
 
 int smblib_toggle_smb_en(struct smb_charger *chg, int toggle);
 void smblib_hvdcp_detect_enable(struct smb_charger *chg, bool enable);

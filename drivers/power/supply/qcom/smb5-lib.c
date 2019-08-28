@@ -2160,6 +2160,57 @@ int smblib_get_prop_batt_charge_done(struct smb_charger *chg,
 	return 0;
 }
 
+int smblib_get_prop_liquid_status(struct smb_charger *chg,
+					union power_supply_propval *val)
+{
+	val->intval = 0;
+
+	if (chg->lpd_status) {
+		val->intval = 1;
+		pr_info("liquid status is true\n");
+	} else {
+		val->intval = 0;
+		pr_info("liquid status is false\n");
+	}
+	return 0;
+}
+
+#define HW_ER_RATIO			2
+#define RF_ADC				1875
+
+bool smblib_support_liquid_feature(struct smb_charger *chg)
+{
+	int hw_version;
+	int rc, i, data;
+	int error_value = RF_ADC*HW_ER_RATIO/100;
+
+	if (chg->lpd_enabled == true) {
+		if (chg->init_once == false)	{
+			rc = smblib_read_iio_channel(chg, chg->iio.hw_version_gpio5,
+						DIV_FACTOR_MILI_V_I, &hw_version);
+			if (rc < 0) {
+				smblib_err(chg, "Couldn't read hw_version_gpio5, rc = %d\n", rc);
+				return rc;
+			} else {
+				smblib_err(chg, "hw_version_gpio5 ADC = %d\n", hw_version);
+			}
+
+			chg->init_once = true;
+
+			for (i = 0; i < chg->lpd_levels; i++) {
+				data = (chg->lpd_hwversion[i] * 100) / (100000 + chg->lpd_hwversion[i]);
+				if (abs(RF_ADC * data / 100 - hw_version) < error_value) {
+					chg->support_liquid = true;
+					break;
+				}
+			}
+		}
+	}
+
+	smblib_err(chg, "support_liquid is %d\n", chg->support_liquid);
+	return chg->support_liquid;
+}
+
 /***********************
  * BATTERY PSY SETTERS *
  ***********************/
@@ -5581,6 +5632,10 @@ enum alarmtimer_restart smblib_lpd_recheck_timer(struct alarm *alarm,
 	chg->lpd_stage = LPD_STAGE_NONE;
 	chg->lpd_reason = LPD_NONE;
 
+	if (chg->support_liquid == true) {
+		schedule_work(&chg->lpd_disable_chg_work);
+	}
+
 	return ALARMTIMER_NORESTART;
 }
 
@@ -5591,6 +5646,10 @@ static bool smblib_src_lpd(struct smb_charger *chg)
 	bool lpd_flag = false;
 	u8 stat;
 	int rc;
+
+	/* skip lpd detection work */
+	if (chg->lpd_enabled == false)
+		return false;
 
 	rc = smblib_read(chg, TYPE_C_SRC_STATUS_REG, &stat);
 	if (rc < 0) {
@@ -5619,8 +5678,15 @@ static bool smblib_src_lpd(struct smb_charger *chg)
 			smblib_err(chg, "Couldn't write 0x%02x to TYPE_C_INTRPT_ENB_SOFTWARE_CTRL rc=%d\n",
 				pval.intval, rc);
 		chg->lpd_reason = LPD_MOISTURE_DETECTED;
+		chg->lpd_status = true;
+
+		if (chg->support_liquid == true) {
+			 vote(chg->usb_icl_votable, LIQUID_DETECTION_VOTER, true, 0);
+			if (chg->batt_psy)
+				power_supply_changed(chg->batt_psy);
+		}
 		alarm_start_relative(&chg->lpd_recheck_timer,
-						ms_to_ktime(60000));
+						ms_to_ktime(15000));
 	} else {
 		chg->lpd_reason = LPD_NONE;
 		chg->typec_mode = smblib_get_prop_typec_mode(chg);
@@ -5903,6 +5969,10 @@ irqreturn_t typec_or_rid_detection_change_irq_handler(int irq, void *data)
 	if (chg->pr_swap_in_progress || chg->pd_hard_reset)
 		goto out;
 
+	/* skip lpd detection work */
+	if (chg->lpd_enabled == false)
+		goto out;
+
 	rc = smblib_read(chg, TYPE_C_MISC_STATUS_REG, &stat);
 	if (rc < 0) {
 		smblib_err(chg, "Couldn't read TYPE_C_MISC_STATUS_REG rc=%d\n",
@@ -5971,6 +6041,8 @@ irqreturn_t typec_attach_detach_irq_handler(int irq, void *data)
 
 	if (stat & TYPEC_ATTACH_DETACH_STATE_BIT) {
 		chg->lpd_stage = LPD_STAGE_FLOAT_CANCEL;
+		if (chg->lpd_status)
+			chg->lpd_status = false;
 		cancel_delayed_work_sync(&chg->lpd_ra_open_work);
 		vote(chg->awake_votable, LPD_VOTER, false, 0);
 
@@ -6883,6 +6955,13 @@ static void smblib_lpd_ra_open_work(struct work_struct *work)
 	if (!(stat & TYPEC_WATER_DETECTION_STATUS_BIT)
 			|| (stat & TYPEC_TCCDEBOUNCE_DONE_STATUS_BIT)) {
 		chg->lpd_stage = LPD_STAGE_NONE;
+		chg->lpd_status = false;
+
+		if (chg->support_liquid == true) {
+			 vote(chg->usb_icl_votable, LIQUID_DETECTION_VOTER, false, 0);
+			if (chg->batt_psy)
+				power_supply_changed(chg->batt_psy);
+		}
 		goto out;
 	}
 
@@ -6918,6 +6997,13 @@ static void smblib_lpd_ra_open_work(struct work_struct *work)
 		}
 
 		chg->lpd_reason = LPD_MOISTURE_DETECTED;
+		chg->lpd_status = true;
+
+		if (chg->support_liquid == true) {
+			vote(chg->usb_icl_votable, LIQUID_DETECTION_VOTER, true, 0);
+			if (chg->batt_psy)
+				power_supply_changed(chg->batt_psy);
+		}
 	} else {
 		/* Floating cable, disable water detection irq temporarily */
 		rc = smblib_masked_write(chg, TYPE_C_INTERRUPT_EN_CFG_2_REG,
@@ -6940,10 +7026,20 @@ static void smblib_lpd_ra_open_work(struct work_struct *work)
 		chg->lpd_reason = LPD_FLOATING_CABLE;
 	}
 
-	/* recheck in 60 seconds */
-	alarm_start_relative(&chg->lpd_recheck_timer, ms_to_ktime(60000));
+	/* recheck in 15 seconds */
+	alarm_start_relative(&chg->lpd_recheck_timer, ms_to_ktime(15000));
 out:
 	vote(chg->awake_votable, LPD_VOTER, false, 0);
+}
+
+static void smblib_lpd_disable_chg_work(struct work_struct *work)
+{
+	struct smb_charger *chg = container_of(work, struct smb_charger,
+							lpd_disable_chg_work);
+
+	vote(chg->usb_icl_votable, LIQUID_DETECTION_VOTER, false, 0);
+	if (chg->batt_psy)
+		power_supply_changed(chg->batt_psy);
 }
 
 static void smblib_lpd_detach_work(struct work_struct *work)
@@ -7147,6 +7243,7 @@ int smblib_init(struct smb_charger *chg)
 	INIT_WORK(&chg->bms_update_work, bms_update_work);
 	INIT_WORK(&chg->pl_update_work, pl_update_work);
 	INIT_WORK(&chg->jeita_update_work, jeita_update_work);
+	INIT_WORK(&chg->lpd_disable_chg_work, smblib_lpd_disable_chg_work);
 	INIT_DELAYED_WORK(&chg->clear_hdc_work, clear_hdc_work);
 	INIT_DELAYED_WORK(&chg->icl_change_work, smblib_icl_change_work);
 	INIT_DELAYED_WORK(&chg->pl_enable_work, smblib_pl_enable_work);
