@@ -295,6 +295,9 @@ enum {
 #define USB_ENG_SSUPPLY_USB2_REG		(USBIN_BASE + 0xC0)
 #define ENG_SSUPPLY_12V_OV_OPT_BIT		BIT(1)
 
+#define TYPE_C_CFG_REG                         (USBIN_BASE + 0x58)
+#define APSD_START_ON_CC_BIT                   BIT(7)
+
 /********************************
  *  DCIN Peripheral Registers   *
  ********************************/
