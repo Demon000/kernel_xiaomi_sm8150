@@ -1091,7 +1091,6 @@ static void smblib_uusb_removal(struct smb_charger *chg)
 	chg->usb_icl_delta_ua = 0;
 	chg->pulse_cnt = 0;
 	chg->uusb_apsd_rerun_done = false;
-	chg->report_usb_absent = false;
 
 	/* write back the default FLOAT charger configuration */
 	rc = smblib_masked_write(chg, USBIN_OPTIONS_2_CFG_REG,
@@ -1743,36 +1742,6 @@ int smblib_get_prop_batt_voltage_now(struct smb_charger *chg,
 	return rc;
 }
 
-static void smblib_check_usb_status(struct smb_charger *chg)
-{
-	int rc;
-	int usb_present = 0, vbat_uv = 0;
-	union power_supply_propval pval = {0,};
-
-	rc = smblib_get_prop_usb_present(chg, &pval);
-	if (rc < 0) {
-		smblib_err(chg, "Couldn't get usb present rc = %d\n", rc);
-		return;
-	}
-	usb_present = pval.intval;
-
-	if (!usb_present)
-		return;
-
-	rc = smblib_get_prop_batt_voltage_now(chg, &pval);
-	if (rc < 0) {
-		pr_err("Couldn't get vbat rc=%d\n", rc);
-		return;
-	}
-	vbat_uv = pval.intval;
-
-	if ((usb_present == 1) && (!off_charge_flag)
-					&& (vbat_uv <= CUTOFF_VOL_THR)) {
-		chg->report_usb_absent = true;
-		power_supply_changed(chg->batt_psy);
-	}
-}
-
 int smblib_get_prop_batt_capacity(struct smb_charger *chg,
 				  union power_supply_propval *val)
 {
@@ -1784,9 +1753,6 @@ int smblib_get_prop_batt_capacity(struct smb_charger *chg,
 	}
 
 	rc = smblib_get_prop_from_bms(chg, POWER_SUPPLY_PROP_CAPACITY, val);
-
-	if (val->intval == 0)
-		smblib_check_usb_status(chg);
 
 	return rc;
 }
@@ -2894,13 +2860,6 @@ int smblib_get_prop_wireless_version(struct smb_charger *chg,
 	chg->idtp_psy = power_supply_get_by_name("idt");
 	if (chg->idtp_psy)
 		chg->wls_chip_psy = chg->idtp_psy;
-	else {
-		chg->wip_psy = power_supply_get_by_name("rx1618");
-		if (chg->wip_psy)
-			chg->wls_chip_psy = chg->wip_psy;
-		else
-			return -EINVAL;
-	}
 
 	if (chg->wls_chip_psy)
 		rc = power_supply_get_property(chg->wls_chip_psy,

@@ -229,13 +229,6 @@ static int smb5_get_prop_input_voltage_regulation(struct smb_charger *chg,
 	chg->idtp_psy = power_supply_get_by_name("idt");
 	if (chg->idtp_psy)
 		chg->wls_chip_psy = chg->idtp_psy;
-	else {
-		chg->wip_psy = power_supply_get_by_name("rx1618");
-		if (chg->wip_psy)
-			chg->wls_chip_psy = chg->wip_psy;
-		else
-			return -EINVAL;
-	}
 
 	if (chg->wls_chip_psy)
 		rc = power_supply_get_property(chg->wls_chip_psy,
@@ -857,11 +850,6 @@ static int smb5_usb_get_prop(struct power_supply *psy,
 		rc = smblib_get_prop_usb_present(chg, val);
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (chg->report_usb_absent) {
-			val->intval = 0;
-			break;
-		}
-
 		rc = smblib_get_prop_usb_online(chg, val);
 		if (!val->intval)
 			break;
@@ -1147,11 +1135,6 @@ static int smb5_usb_port_get_prop(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TYPE_USB;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (chg->report_usb_absent) {
-			val->intval = 0;
-			break;
-		}
-
 		rc = smblib_get_prop_usb_online(chg, val);
 		if (!val->intval)
 			break;
@@ -1522,13 +1505,6 @@ static int smb5_get_prop_wireless_signal(struct smb_charger *chg,
 	chg->idtp_psy = power_supply_get_by_name("idt");
 	if (chg->idtp_psy)
 		chg->wls_chip_psy = chg->idtp_psy;
-	else {
-		chg->wip_psy = power_supply_get_by_name("rx1618");
-		if (chg->wip_psy)
-			chg->wls_chip_psy = chg->wip_psy;
-		else
-			return -EINVAL;
-	}
 
 	if (chg->wls_chip_psy)
 		rc = power_supply_get_property(chg->wls_chip_psy,
@@ -1545,13 +1521,6 @@ static int smb5_set_prop_input_voltage_regulation(struct smb_charger *chg,
 	chg->idtp_psy = power_supply_get_by_name("idt");
 	if (chg->idtp_psy)
 		chg->wls_chip_psy = chg->idtp_psy;
-	else {
-		chg->wip_psy = power_supply_get_by_name("rx1618");
-		if (chg->wip_psy)
-			chg->wls_chip_psy = chg->wip_psy;
-		else
-			return -EINVAL;
-	}
 
 	if (chg->wls_chip_psy)
 		rc = power_supply_set_property(chg->wls_chip_psy,
