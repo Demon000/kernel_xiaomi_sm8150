@@ -376,6 +376,7 @@ struct smb_iio {
 	struct iio_channel	*die_temp_chan;
 	struct iio_channel	*skin_temp_chan;
 	struct iio_channel	*smb_temp_chan;
+	struct iio_channel	*project_gpio6;
 };
 
 struct smb_charger {
