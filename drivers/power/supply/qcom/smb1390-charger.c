@@ -136,6 +136,7 @@ struct smb1390 {
 	int			irqs[NUM_IRQS];
 	bool			status_change_running;
 	bool			taper_work_running;
+	bool			taper_early_trigger;
 	struct smb1390_iio	iio;
 	int			irq_status;
 };
@@ -540,12 +541,16 @@ static int smb1390_notifier_cb(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+#define TAPER_CAPACITY_THR		55
+#define TAPER_CAPCITY_DELTA		1
+#define BATT_COOL_THR		220
 static void smb1390_status_change_work(struct work_struct *work)
 {
 	struct smb1390 *chip = container_of(work, struct smb1390,
 					    status_change_work);
 	union power_supply_propval pval = {0, };
 	int rc;
+	int capacity, batt_temp, charge_type;
 
 	if (!is_psy_voter_available(chip))
 		goto out;
@@ -605,6 +610,49 @@ static void smb1390_status_change_work(struct work_struct *work)
 		if (get_effective_result(chip->disable_votable))
 			goto out;
 
+
+		rc = power_supply_get_property(chip->batt_psy,
+			       POWER_SUPPLY_PROP_CAPACITY, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get batt capacity rc=%d\n", rc);
+			goto out;
+		}
+		capacity = pval.intval;
+
+		rc = power_supply_get_property(chip->batt_psy,
+			       POWER_SUPPLY_PROP_TEMP, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get batt temp rc=%d\n", rc);
+			goto out;
+		}
+		batt_temp = pval.intval;
+
+		rc = power_supply_get_property(chip->batt_psy,
+					POWER_SUPPLY_PROP_CHARGE_TYPE, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get charge type rc=%d\n", rc);
+			goto out;
+		}
+		charge_type = pval.intval;
+
+		pr_info("capacity:%d, batt_temp:%d, charge_type:%d\n",
+				capacity, batt_temp, charge_type);
+
+		if ((capacity < TAPER_CAPACITY_THR)
+			&& (batt_temp >= BATT_COOL_THR)
+			&& (charge_type == POWER_SUPPLY_CHARGE_TYPE_FAST)
+			&& chip->taper_early_trigger) {
+			if (is_client_vote_enabled(chip->fcc_votable,
+							CP_VOTER)) {
+				/* reset cp_voter here */
+				vote(chip->fcc_votable, CP_VOTER, false, 0);
+				/* input current is always half the charge current */
+				vote(chip->ilim_votable, FCC_VOTER, true,
+						get_effective_result(chip->fcc_votable) / 2);
+				chip->taper_early_trigger = false;
+			}
+		}
+
 		rc = power_supply_get_property(chip->batt_psy,
 				POWER_SUPPLY_PROP_CHARGE_TYPE, &pval);
 		if (rc < 0) {
@@ -624,6 +672,7 @@ static void smb1390_status_change_work(struct work_struct *work)
 	} else {
 		vote(chip->disable_votable, SRC_VOTER, true, 0);
 		vote(chip->fcc_votable, CP_VOTER, false, 0);
+		chip->taper_early_trigger = false;
 	}
 
 out:
@@ -636,6 +685,7 @@ static void smb1390_taper_work(struct work_struct *work)
 	struct smb1390 *chip = container_of(work, struct smb1390, taper_work);
 	union power_supply_propval pval = {0, };
 	int rc, fcc_uA;
+	int capacity;
 
 	if (!is_psy_voter_available(chip))
 		goto out;
@@ -644,6 +694,17 @@ static void smb1390_taper_work(struct work_struct *work)
 		fcc_uA = get_effective_result(chip->fcc_votable) - 100000;
 		pr_debug("taper work reducing FCC to %duA\n", fcc_uA);
 		vote(chip->fcc_votable, CP_VOTER, true, fcc_uA);
+
+		rc = power_supply_get_property(chip->batt_psy,
+			       POWER_SUPPLY_PROP_CAPACITY, &pval);
+		if (rc < 0) {
+			pr_err("Couldn't get batt capacity rc=%d\n", rc);
+			goto out;
+		}
+		capacity = pval.intval;
+		if ((capacity < (TAPER_CAPACITY_THR - TAPER_CAPCITY_DELTA))
+				&& !chip->taper_early_trigger)
+			chip->taper_early_trigger = true;
 
 		rc = power_supply_get_property(chip->batt_psy,
 					POWER_SUPPLY_PROP_CHARGE_TYPE, &pval);
