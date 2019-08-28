@@ -390,6 +390,7 @@ struct smb_charger {
 	int			otg_delay_ms;
 	int			*weak_chg_icl_ua;
 	bool			pd_not_supported;
+	bool			dynamic_fv_enabled;
 
 	/* locks */
 	struct mutex		smb_lock;
