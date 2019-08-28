@@ -836,8 +836,6 @@ wait:
 		goto out;
 	}
 out:
-	if (fg->empty_restart_fg)
-		fg->empty_restart_fg = false;
 	fg->fg_restarting = false;
 	return rc;
 }

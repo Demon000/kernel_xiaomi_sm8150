@@ -93,12 +93,6 @@
 #define ESR_SOH_SOC			50
 #define EMPTY_SOC			0
 
-#define VBAT_RESTART_FG_EMPTY_UV		3600000
-#define TEMP_THR_RESTART_FG		150
-#define RESTART_FG_START_WORK_MS		1000
-#define RESTART_FG_WORK_MS		2000
-#define EMPTY_REPORT_SOC		1
-
 #define VBAT_CRITICAL_LOW_THR		2800
 #define EMPTY_DEBOUNCE_TIME_COUNT_MAX		5
 
@@ -467,7 +461,6 @@ struct fg_dev {
 	bool			report_full;
 	bool			use_dma;
 	bool			qnovo_enable;
-	bool			empty_restart_fg;
 	bool			input_present;
 	enum fg_version		version;
 	struct completion	soc_update;
@@ -475,7 +468,6 @@ struct fg_dev {
 	struct delayed_work	profile_load_work;
 	struct work_struct	status_change_work;
 	struct delayed_work	sram_dump_work;
-	struct delayed_work	empty_restart_fg_work;
 };
 
 /* Debugfs data structures are below */
