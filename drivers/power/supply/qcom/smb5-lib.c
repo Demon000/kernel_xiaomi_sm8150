@@ -47,6 +47,9 @@
 
 static bool off_charge_flag;
 
+bool smblib_rsbux_low(struct smb_charger *chg, int r_thr);
+static int smblib_get_prop_typec_mode(struct smb_charger *chg);
+
 static void update_sw_icl_max(struct smb_charger *chg, int pst);
 static int smblib_get_prop_dfp_mode(struct smb_charger *chg);
 
