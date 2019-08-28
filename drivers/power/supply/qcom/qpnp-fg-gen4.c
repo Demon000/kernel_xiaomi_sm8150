@@ -790,6 +790,9 @@ static int fg_gen4_get_prop_capacity(struct fg_dev *fg, int *val)
 	if (rc < 0)
 		return rc;
 
+	if (fg->empty_restart_fg && (msoc == 0))
+		msoc = EMPTY_REPORT_SOC;
+
 	if (chip->dt.linearize_soc && fg->delta_soc > 0)
 		*val = fg->maint_soc;
 	else
@@ -4722,6 +4725,46 @@ static int fg_gen4_parse_dt(struct fg_gen4_chip *chip)
 	return 0;
 }
 
+static void empty_restart_fg_work(struct work_struct *work)
+{
+	struct fg_dev *fg = container_of(work, struct fg_dev,
+				    empty_restart_fg_work.work);
+	union power_supply_propval prop = {0, };
+	int usb_present = 0;
+	int rc;
+
+	if (usb_psy_initialized(fg)) {
+		rc = power_supply_get_property(fg->usb_psy,
+			POWER_SUPPLY_PROP_PRESENT, &prop);
+		if (rc < 0) {
+			pr_err("Couldn't read usb present prop rc=%d\n", rc);
+			return;
+		}
+		usb_present = prop.intval;
+	}
+
+	/* only when usb is absent, restart fg */
+	if (!usb_present) {
+		if (fg->profile_load_status == PROFILE_LOADED) {
+			pr_info("soc empty after cold to warm, need to restart fg\n");
+			fg->empty_restart_fg = true;
+			rc = fg_restart(fg, SOC_READY_WAIT_TIME_MS);
+			if (rc < 0) {
+				pr_err("Error in restarting FG, rc=%d\n", rc);
+				fg->empty_restart_fg = false;
+				return;
+			}
+			pr_info("FG restart done\n");
+			if (batt_psy_initialized(fg))
+				power_supply_changed(fg->batt_psy);
+		} else {
+			schedule_delayed_work(
+					&fg->empty_restart_fg_work,
+					msecs_to_jiffies(RESTART_FG_WORK_MS));
+		}
+	}
+}
+
 static void fg_gen4_cleanup(struct fg_gen4_chip *chip)
 {
 	struct fg_dev *fg = &chip->fg;
@@ -4730,6 +4773,7 @@ static void fg_gen4_cleanup(struct fg_gen4_chip *chip)
 
 	cancel_work(&fg->status_change_work);
 	cancel_delayed_work_sync(&fg->profile_load_work);
+	cancel_delayed_work_sync(&fg->empty_restart_fg_work);
 	cancel_delayed_work_sync(&fg->sram_dump_work);
 	cancel_delayed_work_sync(&chip->pl_current_en_work);
 
@@ -4821,6 +4865,7 @@ static int fg_gen4_probe(struct platform_device *pdev)
 	INIT_WORK(&chip->esr_calib_work, esr_calib_work);
 	INIT_DELAYED_WORK(&fg->profile_load_work, profile_load_work);
 	INIT_DELAYED_WORK(&fg->sram_dump_work, sram_dump_work);
+	INIT_DELAYED_WORK(&fg->empty_restart_fg_work, empty_restart_fg_work);
 	INIT_DELAYED_WORK(&chip->pl_enable_work, pl_enable_work);
 	INIT_DELAYED_WORK(&chip->pl_current_en_work, pl_current_en_work);
 
@@ -4972,6 +5017,11 @@ static int fg_gen4_probe(struct platform_device *pdev)
 	device_init_wakeup(fg->dev, true);
 	if (!fg->battery_missing)
 		schedule_delayed_work(&fg->profile_load_work, 0);
+
+	if ((volt_uv >= VBAT_RESTART_FG_EMPTY_UV)
+			&& (msoc == 0) && (batt_temp >= TEMP_THR_RESTART_FG))
+		schedule_delayed_work(&fg->empty_restart_fg_work,
+				msecs_to_jiffies(RESTART_FG_START_WORK_MS));
 
 	pr_debug("FG GEN4 driver probed successfully\n");
 	return 0;
