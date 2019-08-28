@@ -124,6 +124,9 @@ enum print_reason {
 #define PSNS_CURRENT_SAMPLE_RESIS 392
 #define PSNS_COMP_UV_FOR_HIGH_THERMAL 40000
 
+/* cutoff voltage threshold */
+#define CUTOFF_VOL_THR		3400000
+
 #define BARK_TIMER_LONG		128
 #define BARK_TIMER_NORMAL		16
 
@@ -405,6 +408,7 @@ struct smb_charger {
 	struct power_supply		*usb_port_psy;
 	struct power_supply		*wls_psy;
 	struct power_supply		*idtp_psy;
+	struct power_supply		*wip_psy;
 	struct power_supply		*wireless_psy;
 	struct power_supply		*wls_chip_psy;
 	struct power_supply		*cp_psy;
@@ -540,6 +544,7 @@ struct smb_charger {
 	int			connector_temp;
 	int			thermal_status;
 	int			main_fcc_max;
+	bool			report_usb_absent;
 	u32			jeita_soft_thlds[2];
 	u32			jeita_soft_hys_thlds[2];
 	int			jeita_soft_fcc[2];
