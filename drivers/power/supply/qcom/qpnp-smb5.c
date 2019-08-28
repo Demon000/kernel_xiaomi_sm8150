@@ -361,9 +361,6 @@ static int smb5_parse_dt(struct smb5 *chip)
 	chg->sw_jeita_enabled = of_property_read_bool(node,
 				"qcom,sw-jeita-enable");
 
-	chg->lpd_enabled = of_property_read_bool(node,
-				"qcom,lpd-enable");
-
 	chg->dynamic_fv_enabled = of_property_read_bool(node,
 				"qcom,dynamic-fv-enable");
 
@@ -419,24 +416,6 @@ static int smb5_parse_dt(struct smb5 *chip)
 		rc = of_property_read_u32(node, "qcom,chg-term-base-current-ma",
 				&chip->dt.term_current_thresh_lo_ma);
 
-	if (of_find_property(node, "qcom,lpd_hwversion", &byte_len)) {
-		chg->lpd_hwversion = devm_kzalloc(chg->dev, byte_len,
-			GFP_KERNEL);
-
-		if (chg->lpd_hwversion == NULL)
-			return -ENOMEM;
-
-		chg->lpd_levels = byte_len / sizeof(u32);
-		rc = of_property_read_u32_array(node,
-				"qcom,lpd_hwversion",
-				chg->lpd_hwversion,
-				byte_len / sizeof(u32));
-		if (rc < 0) {
-			dev_err(chg->dev,
-				"Couldn't read threm limits rc = %d\n", rc);
-			return rc;
-		}
-	}
 #ifdef CONFIG_THERMAL
 	if (of_find_property(node, "qcom,thermal-mitigation-dcp", &byte_len)) {
 		chg->thermal_mitigation_dcp = devm_kzalloc(chg->dev, byte_len,
@@ -823,10 +802,6 @@ static int smb5_parse_dt(struct smb5 *chip)
 		return rc;
 
 	rc = smblib_get_iio_channel(chg, "smb_temp", &chg->iio.smb_temp_chan);
-	if (rc < 0)
-		return rc;
-
-	rc = smblib_get_iio_channel(chg, "hw_version_gpio5", &chg->iio.hw_version_gpio5);
 	if (rc < 0)
 		return rc;
 
@@ -1738,7 +1713,6 @@ static int smb5_init_wireless_psy(struct smb5 *chip)
  *************************/
 static enum power_supply_property smb5_batt_props[] = {
 	POWER_SUPPLY_PROP_INPUT_SUSPEND,
-	POWER_SUPPLY_PROP_LIQUID_DETECTION,
 	POWER_SUPPLY_PROP_DYNAMIC_FV_ENABLED,
 	POWER_SUPPLY_PROP_STATUS,
 	POWER_SUPPLY_PROP_HEALTH,
@@ -1910,12 +1884,6 @@ static int smb5_batt_get_prop(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_FCC_STEPPER_ENABLE:
 		val->intval = chg->fcc_stepper_enable;
 		break;
-	case POWER_SUPPLY_PROP_LIQUID_DETECTION:
-		if (chg->support_liquid == true)
-			rc = smblib_get_prop_liquid_status(chg, val);
-		else
-			val->intval = 0;
-		break;
 	case POWER_SUPPLY_PROP_DYNAMIC_FV_ENABLED:
 		val->intval = chg->dynamic_fv_enabled;
 		break;
@@ -2020,10 +1988,6 @@ static int smb5_batt_set_prop(struct power_supply *psy,
 			vote(chg->chg_disable_votable, FORCE_RECHARGE_VOTER,
 					false, 0);
 		break;
-	case POWER_SUPPLY_PROP_LIQUID_DETECTION:
-		chg->lpd_status = val->intval;
-		power_supply_changed(chg->batt_psy);
-		break;
 	case POWER_SUPPLY_PROP_DYNAMIC_FV_ENABLED:
 		chg->dynamic_fv_enabled = !!val->intval;
 		break;
@@ -2052,7 +2016,6 @@ static int smb5_batt_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_STEP_CHARGING_ENABLED:
 	case POWER_SUPPLY_PROP_DIE_HEALTH:
 	case POWER_SUPPLY_PROP_DC_THERMAL_LEVELS:
-	case POWER_SUPPLY_PROP_LIQUID_DETECTION:
 	case POWER_SUPPLY_PROP_DYNAMIC_FV_ENABLED:
 		return 1;
 	default:
@@ -3388,8 +3351,6 @@ static int smb5_probe(struct platform_device *pdev)
 	chg->otg_present = false;
 	chg->main_fcc_max = -EINVAL;
 	chg->fake_dc_on = false;
-	chg->support_liquid = false;
-	chg->init_once = false;
 
 	chg->regmap = dev_get_regmap(chg->dev->parent, NULL);
 	if (!chg->regmap) {
@@ -3545,7 +3506,6 @@ static int smb5_probe(struct platform_device *pdev)
 	}
 
 	pr_info("QPNP SMB5 probed successfully\n");
-	smblib_support_liquid_feature(chg);
 
 	return rc;
 
