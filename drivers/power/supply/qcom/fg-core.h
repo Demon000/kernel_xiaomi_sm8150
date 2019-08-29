@@ -454,6 +454,7 @@ struct fg_dev {
 	bool			use_ima_single_mode;
 	bool			use_dma;
 	bool			qnovo_enable;
+	bool			input_present;
 	enum fg_version		version;
 	struct completion	soc_update;
 	struct completion	soc_ready;
