@@ -169,7 +169,6 @@ struct afe_ctl {
 	uint32_t v_vali_flag;
 };
 
-
 static atomic_t afe_ports_mad_type[SLIMBUS_PORT_LAST - SLIMBUS_0_RX];
 static unsigned long afe_configured_cmd;
 
@@ -260,7 +259,6 @@ int afe_get_topology(int port_id)
 done:
 	return topology;
 }
-
 
 /**
  * afe_set_aanc_info -
@@ -620,7 +618,6 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 						 data->payload_size))
 				return -EINVAL;
 		}
-
 		if (afe_token_is_valid(data->token))
 			wake_up(&this_afe.wait[data->token]);
 		else

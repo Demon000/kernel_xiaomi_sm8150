@@ -3818,6 +3818,7 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_dapm_update *update = NULL;
 	bool state = true;
 
+
 	mutex_lock(&routing_lock);
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
@@ -3975,7 +3976,7 @@ static int msm_routing_ec_ref_rx_put(struct snd_kcontrol *kcontrol,
 	}
 
 	pr_debug("%s: msm_route_ec_ref_rx = %d\n",
-			__func__, msm_route_ec_ref_rx);
+	    __func__, msm_route_ec_ref_rx);
 
 	if (!strncmp(widget->name, "AUDIO_REF_EC_UL10 MUX", strlen("AUDIO_REF_EC_UL10 MUX")))
 		voip_ext_ec_common_ref = msm_route_ec_ref_rx;
@@ -23780,10 +23781,6 @@ static const struct snd_pcm_ops msm_routing_pcm_ops = {
 	.prepare        = msm_pcm_routing_prepare,
 };
 
-#ifdef CONFIG_MSM_CSPL
-	//extern void msm_crus_pb_add_controls(struct snd_soc_platform *platform);
-#endif
-
 /* Not used but frame seems to require it */
 static int msm_routing_probe(struct snd_soc_platform *platform)
 {
@@ -23842,10 +23839,6 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	snd_soc_add_platform_controls(platform,
 		msm_routing_be_dai_name_table_mixer_controls,
 		ARRAY_SIZE(msm_routing_be_dai_name_table_mixer_controls));
-
-#ifdef CONFIG_MSM_CSPL
-	//msm_crus_pb_add_controls(platform);
-#endif
 
 	snd_soc_add_platform_controls(platform, msm_source_tracking_controls,
 				ARRAY_SIZE(msm_source_tracking_controls));

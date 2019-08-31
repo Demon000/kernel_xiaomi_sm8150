@@ -9,7 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define DEBUG
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -1901,7 +1900,6 @@ err:
 	if (config->usbc_force_gpio_p)
 		of_node_put(config->usbc_force_gpio_p);
 	dev_dbg(mbhc->codec->dev, "%s: leave %d\n", __func__, rc);
-
 	return rc;
 }
 EXPORT_SYMBOL(wcd_mbhc_start);
