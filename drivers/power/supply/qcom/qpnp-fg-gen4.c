@@ -2279,6 +2279,8 @@ static int fg_gen4_adjust_recharge_soc(struct fg_gen4_chip *chip)
 	if (is_input_present(fg)) {
 		if (fg->charge_done) {
 			if (!fg->recharge_soc_adjusted) {
+				if (fg->health == POWER_SUPPLY_HEALTH_GOOD)
+					return 0;
 				/* Get raw monotonic SOC for calculation */
 				rc = fg_get_msoc(fg, &msoc);
 				if (rc < 0) {
@@ -3805,6 +3807,7 @@ static enum power_supply_property fg_psy_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW,
+	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_CYCLE_COUNTS,
 	POWER_SUPPLY_PROP_SOC_REPORTING_READY,
 	POWER_SUPPLY_PROP_CLEAR_SOH,
@@ -3922,7 +3925,9 @@ static int fg_parallel_current_en_cb(struct votable *votable, void *data,
 	struct fg_dev *fg = data;
 	struct fg_gen4_chip *chip = container_of(fg, struct fg_gen4_chip, fg);
 	int rc;
+	/*
 	u8 val, mask;
+	*/
 
 	vote(chip->mem_attn_irq_en_votable, MEM_ATTN_IRQ_VOTER, true, 0);
 
@@ -3931,6 +3936,8 @@ static int fg_parallel_current_en_cb(struct votable *votable, void *data,
 	if (rc < 0)
 		return rc;
 
+	/* qcom new patch to fix pm8150b ADC EOC bit not set issue */
+	/*
 	val = enable ? SMB_MEASURE_EN_BIT : 0;
 	mask = SMB_MEASURE_EN_BIT;
 	rc = fg_masked_write(fg, BATT_INFO_FG_CNV_CHAR_CFG(fg), mask, val);
@@ -3940,6 +3947,7 @@ static int fg_parallel_current_en_cb(struct votable *votable, void *data,
 
 	vote(chip->mem_attn_irq_en_votable, MEM_ATTN_IRQ_VOTER, false, 0);
 	fg_dbg(fg, FG_STATUS, "Parallel current summing: %d\n", enable);
+	*/
 
 	return rc;
 }
@@ -4651,7 +4659,8 @@ static int fg_parse_esr_cal_params(struct fg_dev *fg)
 #define DEFAULT_CL_MAX_LIM_DECIPERC	0
 #define DEFAULT_CL_DELTA_BATT_SOC	10
 #define BTEMP_DELTA_LOW			0
-#define BTEMP_DELTA_HIGH		3
+/* set BTEMP_DELTA_HIGH to 10 to avoid batt-temp-delta irq wakeup frequently */
+#define BTEMP_DELTA_HIGH		10
 #define DEFAULT_ESR_PULSE_THRESH_MA	47
 #define DEFAULT_ESR_MEAS_CURR_MA	120
 static int fg_gen4_parse_dt(struct fg_gen4_chip *chip)
