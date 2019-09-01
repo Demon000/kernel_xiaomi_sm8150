@@ -121,6 +121,7 @@ And public attribution of xiaomi platforms(like F1 and so and)
 	qcom,wd-bark-time-secs = <16>;
 	qcom,support-wireless;
 	qcom,dynamic-fv-enable;
+	qcom,lpd-disable;
 };
 
 &ext_5v_boost {
