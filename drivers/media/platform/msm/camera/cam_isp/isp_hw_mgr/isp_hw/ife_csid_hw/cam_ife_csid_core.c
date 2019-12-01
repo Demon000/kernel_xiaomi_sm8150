@@ -1,4 +1,5 @@
 /* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,7 +17,6 @@
 #include <uapi/media/cam_defs.h>
 
 #include "cam_ife_csid_core.h"
-#include "cam_csid_ppi_core.h"
 #include "cam_isp_hw.h"
 #include "cam_soc_util.h"
 #include "cam_io_util.h"
@@ -359,6 +359,7 @@ static int cam_ife_csid_global_reset(struct cam_ife_csid_hw *csid_hw)
 	int rc = 0;
 	uint32_t val = 0, i;
 	uint32_t status;
+	unsigned long flags;
 
 	soc_info = &csid_hw->hw_info->soc_info;
 	csid_reg = csid_hw->csid_info->csid_reg;
@@ -373,6 +374,7 @@ static int cam_ife_csid_global_reset(struct cam_ife_csid_hw *csid_hw)
 	CAM_DBG(CAM_ISP, "CSID:%d Csid reset",
 		csid_hw->hw_intf->hw_idx);
 
+	spin_lock_irqsave(&csid_hw->hw_info->hw_lock, flags);
 	/* Mask all interrupts */
 	cam_io_w_mb(0, soc_info->reg_map[0].mem_base +
 		csid_reg->csi2_reg->csid_csi2_rx_irq_mask_addr);
@@ -414,6 +416,8 @@ static int cam_ife_csid_global_reset(struct cam_ife_csid_hw *csid_hw)
 
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_irq_cmd_addr);
+
+	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
 
 	cam_io_w_mb(0x80, soc_info->reg_map[0].mem_base +
 		csid_hw->csid_info->csid_reg->csi2_reg->csid_csi2_rx_cfg1_addr);
@@ -468,7 +472,6 @@ static int cam_ife_csid_global_reset(struct cam_ife_csid_hw *csid_hw)
 		CAM_ERR(CAM_ISP, "CSID:%d IRQ value after reset rc = %d",
 			csid_hw->hw_intf->hw_idx, val);
 	csid_hw->error_irq_count = 0;
-	csid_hw->first_sof_ts = 0;
 
 	for (i = 0 ; i < CAM_IFE_PIX_PATH_RES_MAX; i++)
 		csid_hw->res_sof_cnt[i] = 0;
@@ -1042,6 +1045,7 @@ static int cam_ife_csid_enable_hw(struct cam_ife_csid_hw  *csid_hw)
 	const struct cam_ife_csid_reg_offset      *csid_reg;
 	struct cam_hw_soc_info              *soc_info;
 	uint32_t i, val, clk_lvl;
+	unsigned long flags;
 
 	csid_reg = csid_hw->csid_info->csid_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
@@ -1063,7 +1067,7 @@ static int cam_ife_csid_enable_hw(struct cam_ife_csid_hw  *csid_hw)
 	CAM_DBG(CAM_ISP, "CSID:%d init CSID HW",
 		csid_hw->hw_intf->hw_idx);
 
-	clk_lvl = cam_soc_util_get_vote_level(soc_info, csid_hw->clk_rate);
+	clk_lvl = cam_ife_csid_get_vote_level(soc_info, csid_hw->clk_rate);
 	CAM_DBG(CAM_ISP, "CSID clock lvl %u", clk_lvl);
 
 	rc = cam_ife_csid_enable_soc_resources(soc_info, clk_lvl);
@@ -1079,6 +1083,8 @@ static int cam_ife_csid_enable_hw(struct cam_ife_csid_hw  *csid_hw)
 	if (rc) {
 		goto disable_soc;
 	}
+
+	spin_lock_irqsave(&csid_hw->hw_info->hw_lock, flags);
 
 	/* clear all interrupts */
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
@@ -1105,6 +1111,8 @@ static int cam_ife_csid_enable_hw(struct cam_ife_csid_hw  *csid_hw)
 
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_irq_cmd_addr);
+
+	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
 
 	val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csid_reg->cmn_reg->csid_hw_version_addr);
@@ -1170,7 +1178,6 @@ static int cam_ife_csid_disable_hw(struct cam_ife_csid_hw *csid_hw)
 
 	csid_hw->hw_info->hw_state = CAM_HW_STATE_POWER_DOWN;
 	csid_hw->error_irq_count = 0;
-	csid_hw->first_sof_ts = 0;
 
 	return rc;
 }
@@ -1424,12 +1431,10 @@ static int cam_ife_csid_enable_csi2(
 	struct cam_isp_resource_node    *res)
 {
 	int rc = 0;
-	const struct cam_ife_csid_reg_offset   *csid_reg;
-	struct cam_hw_soc_info                 *soc_info;
-	struct cam_ife_csid_cid_data           *cid_data;
-	struct cam_csid_ppi_cfg                 ppi_lane_cfg;
+	const struct cam_ife_csid_reg_offset       *csid_reg;
+	struct cam_hw_soc_info                     *soc_info;
+	struct cam_ife_csid_cid_data               *cid_data;
 	uint32_t val = 0;
-	uint32_t ppi_index = 0;
 
 	csid_reg = csid_hw->csid_info->csid_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
@@ -1520,24 +1525,6 @@ static int cam_ife_csid_enable_csi2(
 	cam_io_w_mb(val, soc_info->reg_map[0].mem_base +
 		csid_reg->csi2_reg->csid_csi2_rx_irq_mask_addr);
 
-	ppi_index = csid_hw->csi2_rx_cfg.phy_sel;
-	if (csid_hw->ppi_hw_intf[ppi_index] && csid_hw->ppi_enable) {
-		ppi_lane_cfg.lane_type = csid_hw->csi2_rx_cfg.lane_type;
-		ppi_lane_cfg.lane_num  = csid_hw->csi2_rx_cfg.lane_num;
-		ppi_lane_cfg.lane_cfg  = csid_hw->csi2_rx_cfg.lane_cfg;
-
-		CAM_DBG(CAM_ISP, "ppi_index to init %d", ppi_index);
-		rc = csid_hw->ppi_hw_intf[ppi_index]->hw_ops.init(
-				csid_hw->ppi_hw_intf[ppi_index]->hw_priv,
-				&ppi_lane_cfg,
-				sizeof(struct cam_csid_ppi_cfg));
-		if (rc < 0) {
-			CAM_ERR(CAM_ISP, "PPI:%d Init Failed",
-					ppi_index);
-			return rc;
-		}
-	}
-
 	return 0;
 }
 
@@ -1545,10 +1532,8 @@ static int cam_ife_csid_disable_csi2(
 	struct cam_ife_csid_hw          *csid_hw,
 	struct cam_isp_resource_node    *res)
 {
-	int rc = 0;
-	const struct cam_ife_csid_reg_offset *csid_reg;
-	struct cam_hw_soc_info               *soc_info;
-	uint32_t ppi_index = 0;
+	const struct cam_ife_csid_reg_offset      *csid_reg;
+	struct cam_hw_soc_info                    *soc_info;
 
 	if (res->res_id >= CAM_IFE_CSID_CID_MAX) {
 		CAM_ERR(CAM_ISP, "CSID:%d Invalid res id :%d",
@@ -1578,19 +1563,6 @@ static int cam_ife_csid_disable_csi2(
 		csid_reg->csi2_reg->csid_csi2_rx_cfg1_addr);
 
 	res->res_state = CAM_ISP_RESOURCE_STATE_RESERVED;
-
-	ppi_index = csid_hw->csi2_rx_cfg.phy_sel;
-	if (csid_hw->ppi_hw_intf[ppi_index] && csid_hw->ppi_enable) {
-		/* De-Initialize the PPI bridge */
-		CAM_DBG(CAM_ISP, "ppi_index to de-init %d\n", ppi_index);
-		rc = csid_hw->ppi_hw_intf[ppi_index]->hw_ops.deinit(
-				csid_hw->ppi_hw_intf[ppi_index]->hw_priv,
-				NULL, 0);
-		if (rc < 0) {
-			CAM_ERR(CAM_ISP, "PPI:%d De-Init Failed", ppi_index);
-			return rc;
-		}
-	}
 
 	return 0;
 }
@@ -2493,16 +2465,9 @@ static int cam_ife_csid_get_time_stamp(
 		CAM_IFE_CSID_QTIMER_MUL_FACTOR,
 		CAM_IFE_CSID_QTIMER_DIV_FACTOR);
 
-	if (!csid_hw->first_sof_ts) {
-		get_monotonic_boottime64(&ts);
-		time_stamp->boot_timestamp =
-			(uint64_t)((ts.tv_sec * 1000000000) +
-			ts.tv_nsec);
-		CAM_DBG(CAM_ISP, "timestamp:%lld",
-			time_stamp->boot_timestamp);
-		csid_hw->first_sof_ts = 1;
-	} else
-		time_stamp->boot_timestamp = 0;
+	get_monotonic_boottime64(&ts);
+	time_stamp->boot_timestamp = (uint64_t)((ts.tv_sec * 1000000000) +
+		ts.tv_nsec);
 
 	return 0;
 }
@@ -2586,6 +2551,7 @@ static int cam_ife_csid_reset(void *hw_priv,
 	csid_hw = (struct cam_ife_csid_hw   *)csid_hw_info->core_info;
 	reset   = (struct cam_csid_reset_cfg_args  *)reset_args;
 
+	mutex_lock(&csid_hw->hw_info->hw_mutex);
 	switch (reset->reset_type) {
 	case CAM_IFE_CSID_RESET_GLOBAL:
 		rc = cam_ife_csid_global_reset(csid_hw);
@@ -2599,6 +2565,7 @@ static int cam_ife_csid_reset(void *hw_priv,
 		rc = -EINVAL;
 		break;
 	}
+	mutex_unlock(&csid_hw->hw_info->hw_mutex);
 
 	return rc;
 }
@@ -2732,9 +2699,13 @@ static int cam_ife_csid_reset_retain_sw_reg(
 	const struct cam_ife_csid_reg_offset *csid_reg =
 		csid_hw->csid_info->csid_reg;
 	struct cam_hw_soc_info          *soc_info;
+	unsigned long flags;
 
 	soc_info = &csid_hw->hw_info->soc_info;
 	/* clear the top interrupt first */
+
+	spin_lock_irqsave(&csid_hw->hw_info->hw_lock, flags);
+
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_top_irq_clear_addr);
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
@@ -2743,6 +2714,9 @@ static int cam_ife_csid_reset_retain_sw_reg(
 	cam_io_w_mb(csid_reg->cmn_reg->csid_rst_stb,
 		soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_rst_strobes_addr);
+
+	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
+
 	rc = readl_poll_timeout(soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_top_irq_status_addr,
 			status, (status & 0x1) == 0x1,
@@ -2756,10 +2730,15 @@ static int cam_ife_csid_reset_retain_sw_reg(
 			csid_hw->hw_intf->hw_idx, rc);
 		rc = 0;
 	}
+
+	spin_lock_irqsave(&csid_hw->hw_info->hw_lock, flags);
+
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_top_irq_clear_addr);
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_irq_cmd_addr);
+
+	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
 
 	return rc;
 }
@@ -3205,13 +3184,14 @@ irqreturn_t cam_ife_csid_irq(int irq_num, void *data)
 	uint32_t sof_irq_debug_en = 0;
 	unsigned long flags;
 
+	csid_hw = (struct cam_ife_csid_hw *)data;
+
+	CAM_DBG(CAM_ISP, "CSID %d IRQ Handling", csid_hw->hw_intf->hw_idx);
+
 	if (!data) {
 		CAM_ERR(CAM_ISP, "CSID: Invalid arguments");
 		return IRQ_HANDLED;
 	}
-
-	csid_hw = (struct cam_ife_csid_hw *)data;
-	CAM_DBG(CAM_ISP, "CSID %d IRQ Handling", csid_hw->hw_intf->hw_idx);
 
 	csid_reg = csid_hw->csid_info->csid_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
@@ -3237,6 +3217,8 @@ irqreturn_t cam_ife_csid_irq(int irq_num, void *data)
 		irq_status_rdi[i] = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 		csid_reg->rdi_reg[i]->csid_rdi_irq_status_addr);
 
+	spin_lock_irqsave(&csid_hw->hw_info->hw_lock, flags);
+
 	/* clear */
 	cam_io_w_mb(irq_status_rx, soc_info->reg_map[0].mem_base +
 		csid_reg->csi2_reg->csid_csi2_rx_irq_clear_addr);
@@ -3254,6 +3236,8 @@ irqreturn_t cam_ife_csid_irq(int irq_num, void *data)
 	}
 	cam_io_w_mb(1, soc_info->reg_map[0].mem_base +
 		csid_reg->cmn_reg->csid_irq_cmd_addr);
+
+	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
 
 	CAM_DBG(CAM_ISP,
 		"CSID %d irq status 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x",
@@ -3675,6 +3659,7 @@ int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
 	CAM_DBG(CAM_ISP, "type %d index %d",
 		ife_csid_hw->hw_intf->hw_type, csid_idx);
 
+
 	ife_csid_hw->device_enabled = 0;
 	ife_csid_hw->hw_info->hw_state = CAM_HW_STATE_POWER_DOWN;
 	mutex_init(&ife_csid_hw->hw_info->hw_mutex);
@@ -3688,6 +3673,7 @@ int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
 	init_completion(&ife_csid_hw->csid_ppp_complete);
 	for (i = 0; i < CAM_IFE_CSID_RDI_MAX; i++)
 		init_completion(&ife_csid_hw->csid_rdin_complete[i]);
+
 
 	rc = cam_ife_csid_init_soc_resources(&ife_csid_hw->hw_info->soc_info,
 			cam_ife_csid_irq, ife_csid_hw);
@@ -3781,24 +3767,8 @@ int cam_ife_csid_hw_probe_init(struct cam_hw_intf  *csid_hw_intf,
 
 	ife_csid_hw->csid_debug = 0;
 	ife_csid_hw->error_irq_count = 0;
-	ife_csid_hw->first_sof_ts = 0;
 
-	/* Check if ppi bridge is present or not? */
-	ife_csid_hw->ppi_enable = of_property_read_bool(
-		csid_hw_info->soc_info.pdev->dev.of_node,
-		"ppi-enable");
-
-	if (!ife_csid_hw->ppi_enable)
-		return 0;
-
-	/* Initialize the PPI bridge */
-	for (i = 0; i < CAM_CSID_PPI_HW_MAX; i++) {
-		rc = cam_csid_ppi_hw_init(&ife_csid_hw->ppi_hw_intf[i], i);
-		if (rc < 0) {
-			CAM_ERR(CAM_ISP, "PPI init failed for PPI %d", i);
-			break;
-		}
-	}
+	return 0;
 err:
 	if (rc) {
 		kfree(ife_csid_hw->ipp_res.res_priv);
