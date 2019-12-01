@@ -358,7 +358,7 @@
 				qcom,ramp-pattern-repeat;
 			};
 
-			lpg2 {
+			pwm_lpg2: lpg2 {
 				qcom,lpg-chan-id = <2>;
 				qcom,ramp-step-ms = <100>;
 				qcom,ramp-pause-hi-count = <2>;
@@ -369,7 +369,7 @@
 				qcom,ramp-pattern-repeat;
 			};
 
-			lpg3 {
+			pwm_lpg3: lpg3 {
 				qcom,lpg-chan-id = <3>;
 				qcom,ramp-step-ms = <100>;
 				qcom,ramp-pause-hi-count = <2>;

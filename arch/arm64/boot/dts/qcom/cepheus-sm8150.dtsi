@@ -165,22 +165,6 @@ And public attribution of xiaomi platforms(like F1 and so and)
 			cirrus,gpio-src-select = <0x4>;
 			cirrus,gpio-output-enable;
 		};
-                /*
-		VA-supply = <&dummy_vreg>;
-		VP-supply = <&dummy_vreg>;
-		interrupt-parent = <&tlmm>;
-		interrupts = <11 8>;
-		reset-gpios = <&tlmm 7 0x01>;
-		VA-supply = <&pm8998_s4>;
-		VP-supply = <&audio_vsys>;
-		cirrus,boost-peak-milliamp = <4500>;
-		cirrus,boost-ind-nanohenry = <1000>;
-		cirrus,boost-cap-microfarad = <15>;
-		cirrus,gpio-config2 {
-			cirrus,gpio-src-select = <0x4>;
-			cirrus,gpio-output-enable;
-		};
-                */
 	};
 
 };
@@ -298,6 +282,7 @@ And public attribution of xiaomi platforms(like F1 and so and)
 			linux,code = <KEY_AI>;
 			gpio-key,wakeup;
 			debounce-interval = <39>;
+			gpio-key,level-trigger;
 		};
 	};
 
