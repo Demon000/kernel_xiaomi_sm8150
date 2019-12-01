@@ -276,7 +276,9 @@ struct fts_ts_info {
 	struct work_struct suspend_work;
 	struct work_struct resume_work;
 	struct work_struct cmd_update_work;
+	struct work_struct sleep_work;
 	struct workqueue_struct *event_wq;
+	struct workqueue_struct *irq_wq;
 	struct workqueue_struct *touch_feature_wq;
 
 #ifndef FW_UPDATE_ON_PROBE
@@ -362,6 +364,8 @@ struct fts_ts_info {
 	bool p_sensor_switch;
 	bool palm_sensor_changed;
 	bool palm_sensor_switch;
+	bool tp_pm_suspend;
+	struct completion pm_resume_completion;
 };
 
 struct fts_mode_switch {

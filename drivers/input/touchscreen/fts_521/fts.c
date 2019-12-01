@@ -149,6 +149,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force);
 static int fts_chip_initialization(struct fts_ts_info *info, int init_type);
 static const char *fts_get_limit(struct fts_ts_info *info);
 static irqreturn_t fts_event_handler(int irq, void *ts_info);
+extern void lpm_disable_for_input(bool on);
 
 /**
 * Release all the touches in the linux input subsystem
@@ -173,13 +174,13 @@ void release_all_touches(struct fts_ts_info *info)
 		input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, -1);
 	}
 	input_sync(info->input_dev);
-	info->sleep_finger = info->touch_id;
 	info->touch_id = 0;
 	info->touch_skip = 0;
 	info->fod_id = 0;
 #ifdef STYLUS_MODE
 	info->stylus_id = 0;
 #endif
+	lpm_disable_for_input(false);
 }
 
 /**
@@ -2243,7 +2244,7 @@ static ssize_t fts_hover_autotune_store(struct device *dev,
 	if (on)
 		ret = fts_hover_auto_tune(info);
 	if (ret < OK)
-		return -EPERM;
+		return -1;
 
 	return count;
 }
@@ -3233,17 +3234,26 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 		input_report_abs(info->input_dev, ABS_MT_DISTANCE, distance);
 		input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, area_size);
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (fts_is_in_fodarea(x, y) && info->fod_status) {
-			info->fod_x = x;
-			info->fod_y = y;
-			info->fod_coordinate_update = true;
-			__set_bit(touchId, &info->fod_id);
-			input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, info->fod_overlap);
-			logError(1,	"%s  %s :  FOD Press :%d\n", tag, __func__, touchId);
-		} else {
+		if (fts_is_in_fodarea(x, y) && !(info->fod_id & ~(1 << touchId))) {
+			__set_bit(touchId, &info->sleep_finger);
+			if (info->fod_status) {
+				info->fod_x = x;
+				info->fod_y = y;
+				info->fod_coordinate_update = true;
+				__set_bit(touchId, &info->fod_id);
+				input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, info->fod_overlap);
+				logError(1,	"%s  %s :  FOD Press :%d, fod_id:%08x\n", tag, __func__,
+				touchId, info->fod_id);
+			}
+		} else if (__test_and_clear_bit(touchId, &info->fod_id)) {
 			input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, 0);
 			input_report_key(info->input_dev, BTN_INFO, 0);
 			input_report_key(info->input_dev, KEY_INFO, 0);
+			info->fod_coordinate_update = false;
+			info->fod_overlap = 0;
+			logError(1, "%s  %s :  FOD Release :%d\n", tag, __func__,
+					touchId);
+			__clear_bit(touchId, &info->sleep_finger);
 		}
 #endif
 		input_sync(info->input_dev);
@@ -3251,6 +3261,10 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 		"%s  %s :  Event 0x%02x - ID[%d], (x, y, z) = (%3d, %3d, %3d) type = %d, size = %d, overlap:%d\n",
 		tag, __func__, *event, touchId, x, y, z, touchType, area_size,
 		info->fod_overlap);
+	if (event[0] == 0x13)
+		logError(1,
+			"%s  %s :  Event 0x%02x - Press ID[%d] type = %d\n", tag,
+				__func__, event[0], touchId, touchType);
 
 #ifndef CONFIG_FTS_FOD_AREA_REPORT
 no_report:
@@ -3271,22 +3285,30 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 	u8 touchType;
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 	int x, y;
+	bool fod_up = false;
 #endif
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 	if (event[1] == 0xb5) {
-		info->fod_pressed = false;
 		touchType = TOUCH_TYPE_FINGER;
-		if (info->fod_id)
-			touchId = ffs(info->fod_id) - 1;
-		info->fod_overlap = 0;
-		__clear_bit(touchId, &info->fod_id);
-		input_report_key(info->input_dev, BTN_INFO, 0);
-		input_report_key(info->input_dev, KEY_INFO, 0);
-		finger_report_flag = false;
-		logError(1,	"%s  %s :  FOD Release :%d\n", tag, __func__, touchId);
-		/* fod release don't care touch event release in normal mode */
-		if (info->touch_id)
+		info->sleep_finger = 0;
+		if (!info->fod_id) {
+			logError(1, "%s  %s :  FOD Release without FOD press\n", tag, __func__);
 			goto exit;
+		}
+		if (info->touch_id) {
+			logError(1, "%s  %s :  FOD Release in active mode\n", tag, __func__);
+			goto exit;
+		}
+		touchId = ffs(info->fod_id) - 1;
+		info->fod_overlap = 0;
+
+		logError(1,	"%s  %s :  FOD Release :%d, fod_id:%08x\n", tag, __func__,
+			touchId, info->fod_id);
+
+
+		__clear_bit(touchId, &info->fod_id);
+		fod_up = true;
+
 	} else {
 #endif
 		touchType = event[1] & 0x0F;
@@ -3342,12 +3364,29 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 		return;
 
 	}
-
+#ifdef CONFIG_FTS_FOD_AREA_REPORT
+	__clear_bit(touchId, &info->sleep_finger);
+	if (__test_and_clear_bit(touchId, &info->fod_id)) {
+			input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, 0);
+			input_report_key(info->input_dev, BTN_INFO, 0);
+			input_report_key(info->input_dev, KEY_INFO, 0);
+			info->fod_coordinate_update = false;
+	}
+#endif
 	input_mt_report_slot_state(info->input_dev, tool, 0);
 	if (info->touch_id == 0) {
 		input_report_key(info->input_dev, BTN_TOUCH, touch_condition);
+		lpm_disable_for_input(false);
 		if (!touch_condition)
 			input_report_key(info->input_dev, BTN_TOOL_FINGER, 0);
+#ifdef CONFIG_FTS_FOD_AREA_REPORT
+		info->fod_pressed = false;
+		info->fod_overlap = 0;
+		input_report_key(info->input_dev, BTN_INFO, 0);
+		input_report_key(info->input_dev, KEY_INFO, 0);
+		finger_report_flag = false;
+#endif
+
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 		wake_up(&info->wait_queue);
 #endif
@@ -3356,12 +3395,21 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 		info->fod_id = 0;
 	}
 	input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, -1);
-	logError(1,
-		"%s  %s :  Event 0x%02x - release ID[%d] type = %d\n", tag,
-		__func__, event[0], touchId, touchType);
+#ifdef CONFIG_FTS_FOD_AREA_REPORT
+	if (fod_up)
+		logError(1,
+			"%s  %s :  Event FOD - release ID[%d] type = %d\n", tag,
+			__func__, touchId, touchType);
+	else
+#endif
+		logError(1,
+			"%s  %s :  Event 0x%02x - release ID[%d] type = %d\n", tag,
+			__func__, event[0], touchId, touchType);
 
 	input_sync(info->input_dev);
+#ifdef CONFIG_FTS_FOD_AREA_REPORT
 exit:
+#endif
 	return;
 }
 
@@ -3690,45 +3738,54 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 	if (event[0] == EVT_ID_USER_REPORT && event[1] == EVT_TYPE_USER_GESTURE) {
 		needCoords = 1;
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (event[2] == GEST_ID_LONG_PRESS && info->fod_status &&
-			!info->sleep_finger) {
+		if (event[2] == GEST_ID_LONG_PRESS && info->fod_status) {
 			touch_area = (event[9] << 8) | (event[8]);
 			fod_overlap = (event[11] << 8) | (event[10]);
-
-			if (fts_is_in_fodarea(x, y)) {
+			if ((!info->sensor_sleep && info->fod_coordinate_update &&
+			info->fod_id && fts_is_in_fodarea(info->fod_x, info->fod_y)) ||
+				(info->sensor_sleep && fts_is_in_fodarea(x, y))) {
 				if (!finger_report_flag) {
 					logError(1, "%s  %s finger down in the fod area\n", tag, __func__);
 					finger_report_flag = true;
 				}
 				info->fod_overlap = fod_overlap;
-				info->fod_pressed = true;
-				input_report_key(info->input_dev, BTN_INFO, 1);
-				input_report_key(info->input_dev, KEY_INFO, 1);
-				if (info->sensor_sleep || info->fod_coordinate_update) {
+
+				if ((info->sensor_sleep && !info->sleep_finger) || !info->sensor_sleep) {
+					info->fod_pressed = true;
+					input_report_key(info->input_dev, BTN_INFO, 1);
+					input_report_key(info->input_dev, KEY_INFO, 1);
 					input_sync(info->input_dev);
-					if (info->fod_id)
+					if (info->fod_id) {
 						fod_id = ffs(info->fod_id) - 1;
-					input_mt_slot(info->input_dev, fod_id);
-					input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
-					input_report_key(info->input_dev, BTN_TOUCH, 1);
-					input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
-					if (info->fod_coordinate_update) {
-						input_report_abs(info->input_dev, ABS_MT_POSITION_X, info->fod_x);
-						input_report_abs(info->input_dev, ABS_MT_POSITION_Y, info->fod_y);
-						info->fod_coordinate_update = false;
-					} else {
-						input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
-						input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
+						if (info->fod_id & ~(1 << fod_id))
+							logError(1, "%s  %s multi fingers on fod area:%08x\n", tag,
+							__func__, info->fod_id);
+					} else if (info->sensor_sleep) {
+						__set_bit(0, &info->fod_id);
 					}
-					input_report_abs(info->input_dev, ABS_MT_WIDTH_MAJOR, touch_area);
-					input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, fod_overlap);
+
+					if (info->fod_coordinate_update || info->sensor_sleep) {
+						input_mt_slot(info->input_dev, fod_id);
+						input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
+						input_report_key(info->input_dev, BTN_TOUCH, 1);
+						input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
+						if (info->sensor_sleep) {
+							input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
+							input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
+						} else {
+							input_report_abs(info->input_dev, ABS_MT_POSITION_X, info->fod_x);
+							input_report_abs(info->input_dev, ABS_MT_POSITION_Y, info->fod_y);
+							info->fod_coordinate_update = false;
+						}
+						input_report_abs(info->input_dev, ABS_MT_WIDTH_MAJOR, touch_area);
+						input_report_abs(info->input_dev, ABS_MT_WIDTH_MINOR, fod_overlap);
+						logError(1, "%s %s id:%d, fod_id:%08x, touch_area:%d, overlap:%d,fod report\n",
+										tag, __func__, fod_id, info->fod_id, touch_area, fod_overlap);
+					}
 					input_sync(info->input_dev);
 				}
-				logError(1,"%s %s fod_id:%d touch_area:%d, overlap:%d,fod report\n",
-								tag, __func__, fod_id, touch_area, fod_overlap);
-			} else
-				__clear_bit(0, &info->fod_id);
-			goto gesture_done;
+			}
+				goto gesture_done;
 		} else if (event[2] == GEST_ID_SINGTAP && info->fod_status) {
 			input_report_key(info->input_dev, KEY_GOTO, 1);
 			input_sync(info->input_dev);
@@ -3958,6 +4015,86 @@ static void buffDump(unsigned char *buf, unsigned int buflength, char *tag)
 }
 */
 
+static void fts_ts_sleep_work(struct work_struct *work)
+{
+	struct fts_ts_info *info = container_of(work, struct fts_ts_info, sleep_work);
+	int error = 0, count = 0;
+	unsigned char regAdd = FIFO_CMD_READALL;
+	unsigned char data[FIFO_EVENT_SIZE * FIFO_DEPTH] = {0};
+	unsigned char eventId;
+	const unsigned char EVENTS_REMAINING_POS = 7;
+	const unsigned char EVENTS_REMAINING_MASK = 0x1F;
+	unsigned char events_remaining = 0;
+	unsigned char *evt_data;
+	static char pre_id[3];
+	event_dispatch_handler_t event_handler;
+	int r;
+	fts_disableInterrupt();
+	if (info->tp_pm_suspend) {
+		r = wait_for_completion_timeout(&info->pm_resume_completion, msecs_to_jiffies(500));
+		if (!r) {
+			logError(1, "%s pm_resume_completion timeout, i2c is closed", tag);
+			pm_relax(info->dev);
+			fts_enableInterrupt();
+			lpm_disable_for_input(false);
+			return;
+		} else {
+			logError(1, "%s pm_resume_completion be completed, handling irq", tag);
+		}
+	}
+
+	info->irq_status = true;
+	error = fts_writeReadU8UX(regAdd, 0, 0, data, FIFO_EVENT_SIZE,
+				  DUMMY_FIFO);
+	events_remaining = data[EVENTS_REMAINING_POS] & EVENTS_REMAINING_MASK;
+	events_remaining = (events_remaining > FIFO_DEPTH - 1) ?
+				FIFO_DEPTH - 1 : events_remaining;
+
+	/*Drain the rest of the FIFO, up to 31 events*/
+	if (error == OK && events_remaining > 0) {
+		error = fts_writeReadU8UX(regAdd, 0, 0, &data[FIFO_EVENT_SIZE],
+					  FIFO_EVENT_SIZE * events_remaining,
+					  DUMMY_FIFO);
+	}
+	if (error != OK) {
+		logError(1,
+			"Error (%d) while reading from FIFO in fts_event_handler",
+			error);
+	} else {
+		for (count = 0; count < events_remaining + 1; count++) {
+			evt_data = &data[count * FIFO_EVENT_SIZE];
+			if (pre_id[0] == EVT_ID_USER_REPORT &&
+				pre_id[1] == 0x02 &&
+				pre_id[2] == 0x18) {
+				pre_id[0] = 0;
+				pre_id[1] = 0;
+				pre_id[2] = 0;
+				continue;
+			}
+			if (evt_data[0] == EVT_ID_NOEVENT)
+				break;
+			eventId = evt_data[0] >> 4;
+			/*Ensure event ID is within bounds*/
+			if (eventId < NUM_EVT_ID) {
+				event_handler = info->event_dispatch_table[eventId];
+				event_handler(info, (evt_data));
+				pre_id[0] = evt_data[0];
+				pre_id[1] = evt_data[1];
+				pre_id[2] = evt_data[2];
+			}
+		}
+	}
+	input_sync(info->input_dev);
+	info->irq_status = false;
+#ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
+	wake_up(&info->wait_queue);
+#endif
+	pm_relax(info->dev);
+	fts_enableInterrupt();
+	lpm_disable_for_input(false);
+	return;
+}
+
 /**
  * Bottom Half Interrupt Handler function
  * This handler is called each time there is at least one new event in the FIFO and the interrupt pin of the IC goes low.
@@ -3977,11 +4114,22 @@ static irqreturn_t fts_event_handler(int irq, void *ts_info)
 	static char pre_id[3];
 	event_dispatch_handler_t event_handler;
 
+	if (info->tp_pm_suspend) {
+		logError(1, "%s device in suspend, schedue to work", tag);
+		pm_wakeup_event(info->dev, 0);
+		if (!work_pending(&info->sleep_work)) {
+			pm_stay_awake(info->dev);
+			queue_work(info->irq_wq, &info->sleep_work);
+		}
+		return IRQ_HANDLED;
+	}
+
 #ifdef CONFIG_SECURE_TOUCH
 	if (!fts_secure_filter_interrupt(info)) {
 		return IRQ_HANDLED;
 	}
 #endif
+	lpm_disable_for_input(true);
 
 	info->irq_status = true;
 	error = fts_writeReadU8UX(regAdd, 0, 0, data, FIFO_EVENT_SIZE,
@@ -4026,6 +4174,8 @@ static irqreturn_t fts_event_handler(int irq, void *ts_info)
 	}
 	input_sync(info->input_dev);
 	info->irq_status = false;
+	if (!info->touch_id)
+		lpm_disable_for_input(false);
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 	wake_up(&info->wait_queue);
 #endif
@@ -4823,7 +4973,7 @@ int fts_read_touchmode_data()
 		logError(1,
 			 "%s %s: error while reading touchmode data ERROR %08X\n",
 			 tag, __func__, ret);
-		return -EPERM;
+		return -1;
 	}
 	ret = fts_writeRead_dma_safe(grip_cmd, sizeof(grip_cmd) / sizeof(u8), grip_value,
 			     readBytes);
@@ -4831,7 +4981,7 @@ int fts_read_touchmode_data()
 		logError(1,
 			 "%s %s: error while reading edge filter data ERROR %08X\n",
 			 tag, __func__, ret);
-		return -EPERM;
+		return -1;
 	}
 
 	for (i = 0; i < Touch_Mode_NUM; i++) {
@@ -5427,6 +5577,7 @@ static void fts_suspend_work(struct work_struct *work)
 	sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL,
 		     "touch_suspend_notify");
 #endif
+	lpm_disable_for_input(false);
 }
 
 #ifdef CONFIG_DRM
@@ -6247,6 +6398,8 @@ static int fts_pm_suspend(struct device *dev)
 #else
 	enable_irq_wake(info->client->irq);
 #endif
+	info->tp_pm_suspend = true;
+	reinit_completion(&info->pm_resume_completion);
 
 	return 0;
 
@@ -6264,6 +6417,8 @@ static int fts_pm_resume(struct device *dev)
 #else
 	disable_irq_wake(info->client->irq);
 #endif
+	info->tp_pm_suspend = false;
+	complete(&info->pm_resume_completion);
 
 	return 0;
 }
@@ -6513,6 +6668,7 @@ static int fts_probe(struct spi_device *client)
 		if (!info->board) {
 			logError(1, "%s ERROR:info.board kzalloc failed \n",
 				 tag);
+			error = -ENOMEM;
 			goto ProbeErrorExit_1;
 		}
 		parse_dt(&client->dev, info->board);
@@ -6523,6 +6679,7 @@ static int fts_probe(struct spi_device *client)
 	if (retval < 0) {
 		logError(1, "%s ERROR: %s: Failed to get regulators\n", tag,
 			 __func__);
+		error = retval;
 		goto ProbeErrorExit_1;
 	}
 
@@ -6530,6 +6687,7 @@ static int fts_probe(struct spi_device *client)
 	if (retval < 0) {
 		logError(1, "%s %s: ERROR Failed to enable regulators\n", tag,
 			 __func__);
+		error = retval;
 		goto ProbeErrorExit_2;
 	}
 
@@ -6538,6 +6696,7 @@ static int fts_probe(struct spi_device *client)
 	if (retval < 0) {
 		logError(1, "%s %s: ERROR Failed to set up GPIO's\n", tag,
 			 __func__);
+		error = retval;
 		goto ProbeErrorExit_2;
 	}
 
@@ -6569,8 +6728,19 @@ static int fts_probe(struct spi_device *client)
 		error = -ENOMEM;
 		goto ProbeErrorExit_4;
 	}
+
+	info->irq_wq =
+	    alloc_workqueue("fts-irq-queue",
+			    WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
+	if (!info->irq_wq) {
+		logError(1, "%s ERROR: Cannot create irq work thread\n", tag);
+		error = -ENOMEM;
+		goto ProbeErrorExit_4;
+	}
+
 	INIT_WORK(&info->resume_work, fts_resume_work);
 	INIT_WORK(&info->suspend_work, fts_suspend_work);
+	INIT_WORK(&info->sleep_work, fts_ts_sleep_work);
 	init_completion(&info->tp_reset_completion);
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 	init_waitqueue_head(&info->wait_queue);
@@ -6808,6 +6978,7 @@ static int fts_probe(struct spi_device *client)
 	}
 	device_init_wakeup(&client->dev, 1);
 
+	init_completion(&info->pm_resume_completion);
 #ifdef CONFIG_TOUCHSCREEN_ST_DEBUG_FS
 	info->debugfs = debugfs_create_dir("tp_debug", NULL);
 	if (info->debugfs) {
