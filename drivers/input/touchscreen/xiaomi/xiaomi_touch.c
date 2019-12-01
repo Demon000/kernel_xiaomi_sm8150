@@ -21,7 +21,7 @@ static int xiaomi_touch_dev_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t xiaomi_touch_dev_read(struct file *file, char __user *buf,
-			   size_t count, loff_t *pos)
+		size_t count, loff_t *pos)
 {
 	return 0;
 }
@@ -158,7 +158,7 @@ int xiaomitouch_register_modedata(struct xiaomi_touch_interface *data)
 
 	touch_data->setModeValue = data->setModeValue;
 	touch_data->getModeValue = data->getModeValue;
-	touch_data->resetMode= data->resetMode;
+	touch_data->resetMode = data->resetMode;
 	touch_data->getModeAll = data->getModeAll;
 	touch_data->palm_sensor_read = data->palm_sensor_read;
 	touch_data->palm_sensor_write = data->palm_sensor_write;
