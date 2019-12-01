@@ -158,13 +158,13 @@ static bool cp_ilim_boost_enabled(struct pl_data *chip)
 	return pval.intval == POWER_SUPPLY_PL_OUTPUT_VPH;
 }
 
-static void cp_configure_ilim(struct pl_data *chip, const char *voter, bool state, int ilim)
+static void cp_configure_ilim(struct pl_data *chip, const char *voter, int ilim)
 {
 	if (!chip->cp_ilim_votable)
 		chip->cp_ilim_votable = find_votable("CP_ILIM");
 
 	if (!cp_ilim_boost_enabled(chip) && chip->cp_ilim_votable)
-		vote(chip->cp_ilim_votable, voter, state, ilim);
+		vote(chip->cp_ilim_votable, voter, true, ilim);
 }
 
 /*******
@@ -926,7 +926,7 @@ stepper_exit:
 	chip->main_fcc_ua = main_fcc;
 	chip->slave_fcc_ua = parallel_fcc;
 
-	cp_configure_ilim(chip, FCC_VOTER, true, chip->main_fcc_ua / 2);
+	cp_configure_ilim(chip, FCC_VOTER, chip->main_fcc_ua / 2);
 
 	if (reschedule_ms) {
 		schedule_delayed_work(&chip->fcc_stepper_work,
@@ -1079,20 +1079,8 @@ static int usb_icl_vote_callback(struct votable *votable, void *data,
 
 	vote(chip->pl_disable_votable, ICL_CHANGE_VOTER, false, 0);
 
-	if (!chip->usb_psy)
-		chip->usb_psy = power_supply_get_by_name("usb");
+	cp_configure_ilim(chip, ICL_CHANGE_VOTER, icl_ua);
 
-	rc = power_supply_get_property(chip->usb_psy,
-				POWER_SUPPLY_PROP_SMB_EN_REASON, &pval);
-	if (rc < 0) {
-		pr_err("Couldn't get cp reason rc=%d\n", rc);
-		return rc;
-	}
-
-	if (pval.intval != POWER_SUPPLY_CP_WIRELESS)
-		cp_configure_ilim(chip, ICL_CHANGE_VOTER, true, icl_ua);
-	else
-		cp_configure_ilim(chip, ICL_CHANGE_VOTER, false, icl_ua);
 	return 0;
 }
 
@@ -1307,7 +1295,7 @@ static int pl_disable_vote_callback(struct votable *votable,
 			/* main psy gets all share */
 			vote(chip->fcc_main_votable, MAIN_FCC_VOTER, true,
 								total_fcc_ua);
-			cp_configure_ilim(chip, FCC_VOTER, true, total_fcc_ua / 2);
+			cp_configure_ilim(chip, FCC_VOTER, total_fcc_ua / 2);
 
 			/* reset parallel FCC */
 			chip->slave_fcc_ua = 0;
