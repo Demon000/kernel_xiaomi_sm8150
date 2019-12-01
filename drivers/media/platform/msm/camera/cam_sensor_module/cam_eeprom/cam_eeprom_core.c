@@ -893,13 +893,6 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 		if (rc) {
 			CAM_ERR(CAM_EEPROM,
 				"read_eeprom_memory failed");
-			rc = cam_destroy_device_hdl(e_ctrl->bridge_intf.device_hdl);
-			if (rc < 0)
-				CAM_ERR(CAM_EEPROM, "destroying the device hdl");
-
-			e_ctrl->bridge_intf.device_hdl = -1;
-			e_ctrl->bridge_intf.link_hdl = -1;
-			e_ctrl->bridge_intf.session_hdl = -1;
 			goto power_down;
 		}
 
