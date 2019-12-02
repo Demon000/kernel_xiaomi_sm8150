@@ -1,4 +1,5 @@
 /* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -262,31 +263,6 @@ struct cam_hw_dump_pf_args {
 	bool                           *mem_found;
 };
 
-/**
- * struct cam_hw_reset_args -hw reset arguments
- *
- * @ctxt_to_hw_map:        HW context from the acquire
- *
- */
-struct cam_hw_reset_args {
-	void                           *ctxt_to_hw_map;
-};
-
-/**
- * struct cam_hw_dump_args - Dump arguments
- *
- * @request_id:            request_id
- * @buf_handle:            Buffer handle
- * @offset:                Buffer offset. This is updated by the drivers.
- * @ctxt_to_hw_map:        HW context from the acquire
- */
-struct cam_hw_dump_args {
-	uint64_t          request_id;
-	uint32_t          buf_handle;
-	int32_t           offset;
-	void             *ctxt_to_hw_map;
-};
-
 /* enum cam_hw_mgr_command - Hardware manager command type */
 enum cam_hw_mgr_command {
 	CAM_HW_MGR_CMD_INTERNAL,
@@ -338,8 +314,6 @@ struct cam_hw_cmd_args {
  * @hw_open:                   Function pointer for HW init
  * @hw_close:                  Function pointer for HW deinit
  * @hw_flush:                  Function pointer for HW flush
- * @hw_reset:                  Function pointer for HW reset
- * @hw_dump:                   Function pointer for HW dump
  *
  */
 struct cam_hw_mgr_intf {
@@ -360,8 +334,6 @@ struct cam_hw_mgr_intf {
 	int (*hw_open)(void *hw_priv, void *fw_download_args);
 	int (*hw_close)(void *hw_priv, void *hw_close_args);
 	int (*hw_flush)(void *hw_priv, void *hw_flush_args);
-	int (*hw_reset)(void *hw_priv, void *hw_reset_args);
-	int (*hw_dump)(void *hw_priv, void *hw_dump_args);
 };
 
 #endif /* _CAM_HW_MGR_INTF_H_ */
