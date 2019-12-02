@@ -788,7 +788,6 @@
 #include "sm8150-camera.dtsi"
 
 #include "msm-qvr-external.dtsi"
-#include "trusty.dtsi"
 
 &soc {
 	#address-cells = <1>;
