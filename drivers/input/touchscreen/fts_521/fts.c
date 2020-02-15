@@ -4899,12 +4899,6 @@ static int fts_bl_state_chg_callback(struct notifier_block *nb,
 		flush_workqueue(info->event_wq);
 		if (blank == BACKLIGHT_OFF && (info->fod_status_set &&
 		!info->sensor_sleep && !info->touch_id)) {
-#ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
-			if (info->p_sensor_switch) {
-				logError(1, "%s eardet enabled, skip disableirq\n", tag, __func__);
-				return NOTIFY_OK;
-			}
-#endif
 			if (info->sensor_sleep)
 				return NOTIFY_OK;
 			logError(1, "%s %s: BL_EVENT_BLANK\n", tag, __func__);
