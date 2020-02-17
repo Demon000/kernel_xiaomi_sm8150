@@ -165,6 +165,12 @@ struct drm_panel_esd_config {
 	u32 groups;
 };
 
+struct dsi_panel_read_config {
+	struct dsi_panel_cmd_set read_cmd;
+	u32 cmds_rlen;
+	u8 rbuf[64];
+};
+
 struct dsi_panel {
 	const char *name;
 	const char *type;
@@ -213,6 +219,12 @@ struct dsi_panel {
 	bool sync_broadcast_en;
 	int power_mode;
 	enum dsi_panel_physical_type panel_type;
+
+	bool elvss_dimming_check_enable;
+	struct dsi_panel_read_config elvss_dimming_config;
+	struct dsi_panel_cmd_set elvss_dimming_offset_cmd;
+	struct dsi_panel_cmd_set fod_hbm_on_cmd;
+	struct dsi_panel_cmd_set fod_hbm_off_cmd;
 
 	bool doze_state;
 	bool fod_hbm_status;
@@ -329,6 +341,9 @@ struct dsi_panel *dsi_panel_ext_bridge_get(struct device *parent,
 int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel);
 
 void dsi_panel_ext_bridge_put(struct dsi_panel *panel);
+
+int dsi_panel_tx_cmd_set_ptr(struct dsi_panel *panel,
+				struct dsi_panel_cmd_set *cmd_set);
 
 int dsi_panel_set_doze_backlight(struct dsi_panel *panel, u32 bl_lvl);
 

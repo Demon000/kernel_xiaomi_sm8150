@@ -879,6 +879,118 @@ release_panel_lock:
 	return rc;
 }
 
+static int dsi_display_read_panel_config(struct dsi_display *display,
+				struct dsi_panel_read_config *read_config)
+{
+	struct dsi_panel *panel = display->panel;
+	struct dsi_display_ctrl *m_ctrl;
+	struct dsi_cmd_desc *cmds;
+	int rc = 0, ret = 0;
+	u32 flags = 0;
+	int count;
+
+	if (!panel->panel_initialized) {
+		pr_err("[%s] panel not initialized\n", display->name);
+		return -EINVAL;
+	}
+
+	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
+			DSI_ALL_CLKS, DSI_CLK_ON);
+	if (rc) {
+		pr_err("[%s] failed to enable all DSI clocks, rc=%d\n",
+		       display->name, rc);
+		goto error;
+	}
+
+	rc = dsi_display_cmd_engine_enable(display);
+	if (rc) {
+		pr_err("[%s] failed to enable cmd engine, rc=%d\n",
+		       display->name, rc);
+		goto error_disable_clks;
+	}
+
+	if (display->tx_cmd_buf == NULL) {
+		rc = dsi_host_alloc_cmd_tx_buffer(display);
+		if (rc) {
+			pr_err("[%s] failed to allocate cmd tx buffer memory\n",
+					display->name);
+			goto error_disable_cmd_engine;
+		}
+	}
+
+	count = read_config->read_cmd.count;
+	cmds = read_config->read_cmd.cmds;
+	if (cmds->last_command) {
+		cmds->msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
+		flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	}
+	flags |= (DSI_CTRL_CMD_FETCH_MEMORY | DSI_CTRL_CMD_READ);
+
+	memset(read_config->rbuf, 0x00, sizeof(read_config->rbuf));
+	cmds->msg.rx_buf = read_config->rbuf;
+	cmds->msg.rx_len = read_config->cmds_rlen;
+
+	m_ctrl = &display->ctrl[display->cmd_master_idx];
+	rc = dsi_ctrl_cmd_transfer(m_ctrl->ctrl, &cmds->msg, flags);
+	if (rc <= 0) {
+		pr_err("[%s] cmd read transfer failed on master,rc=%d\n",
+		       display->name, rc);
+		goto error_disable_cmd_engine;
+	}
+
+error_disable_cmd_engine:
+	ret = dsi_display_cmd_engine_disable(display);
+	if (ret) {
+		pr_err("[%s]failed to disable DSI cmd engine, rc=%d\n",
+				display->name, ret);
+	}
+error_disable_clks:
+	ret = dsi_display_clk_ctrl(display->dsi_clk_handle,
+			DSI_ALL_CLKS, DSI_CLK_OFF);
+	if (ret) {
+		pr_err("[%s] failed to disable all DSI clocks, rc=%d\n",
+		       display->name, ret);
+	}
+error:
+	return rc;
+}
+
+static int dsi_display_update_elvss_cmds(struct dsi_display *display)
+{
+	struct dsi_panel *panel = display->panel;
+	u8 *rbuf, *tbuf;
+
+	int rc = 0;
+
+	rc = dsi_panel_tx_cmd_set_ptr(panel, &panel->elvss_dimming_offset_cmd);
+	if (rc) {
+		pr_err("[%s] failed to write elvss dimming offset cmds, rc=%d\n",
+				display->name, rc);
+		return rc;
+	}
+
+	rc = dsi_display_read_panel_config(display,
+			&panel->elvss_dimming_config);
+	if (rc <= 0) {
+		pr_err("[%s] failed to read elvss dimming config, rc=%d\n",
+				display->name, rc);
+		return rc;
+	}
+
+	rbuf = panel->elvss_dimming_config.rbuf;
+	pr_info("[%s] elvss dimming result %x\n", display->name, rbuf[0]);
+
+	tbuf = (u8 *)panel->fod_hbm_on_cmd.cmds[4].msg.tx_buf;
+	tbuf[1] = rbuf[0] & 0x7F;
+	pr_info("[%s] fod hbm on changed to %x\n", display->name, tbuf[1]);
+
+	tbuf = (u8 *)panel->fod_hbm_off_cmd.cmds[6].msg.tx_buf;
+	tbuf[1] = rbuf[0];
+	pr_info("[%s] fod hbm off changed to %x\n", display->name, tbuf[1]);
+
+	return 0;
+}
+
 static int dsi_display_cmd_prepare(const char *cmd_buf, u32 cmd_buf_len,
 		struct dsi_cmd_desc *cmd, u8 *payload, u32 payload_len)
 {
@@ -7494,6 +7606,11 @@ int dsi_display_enable(struct dsi_display *display)
 		rc = -EINVAL;
 		goto error_disable_panel;
 	}
+
+	dsi_panel_acquire_panel_lock(display->panel);
+	if (display->panel->elvss_dimming_check_enable)
+		dsi_display_update_elvss_cmds(display);
+	dsi_panel_release_panel_lock(display->panel);
 
 	goto error;
 
