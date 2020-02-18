@@ -994,14 +994,14 @@ static int dsi_display_update_elvss_cmds(struct dsi_display *display)
 	rbuf = panel->elvss_dimming_config.rbuf;
 	pr_info("[%s] elvss dimming result %x\n", display->name, rbuf[0]);
 
-	tbuf = (u8 *)panel->fod_hbm_on_cmd.cmds[4].msg.tx_buf;
-	tbuf[1] = rbuf[0] & 0x7F;
-	pr_info("[%s] fod hbm on changed to %x\n", display->name, tbuf[1]);
+	// tbuf = (u8 *)panel->fod_hbm_on_cmd.cmds[4].msg.tx_buf;
+	// tbuf[1] = rbuf[0] & 0x7F;
+	// pr_info("[%s] fod hbm on changed to %x\n", display->name, tbuf[1]);
 	dsi_display_print_cmd_set(&panel->fod_hbm_on_cmd);
 
-	tbuf = (u8 *)panel->fod_hbm_off_cmd.cmds[6].msg.tx_buf;
-	tbuf[1] = rbuf[0];
-	pr_info("[%s] fod hbm off changed to %x\n", display->name, tbuf[1]);
+	// tbuf = (u8 *)panel->fod_hbm_off_cmd.cmds[6].msg.tx_buf;
+	// tbuf[1] = rbuf[0];
+	// pr_info("[%s] fod hbm off changed to %x\n", display->name, tbuf[1]);
 	dsi_display_print_cmd_set(&panel->fod_hbm_off_cmd);
 
 	return 0;
