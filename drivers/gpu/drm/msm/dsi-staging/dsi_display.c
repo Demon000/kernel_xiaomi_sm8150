@@ -972,27 +972,27 @@ static void dsi_display_print_cmd_set(struct dsi_panel_cmd_set *cmd_set) {
 static int dsi_display_update_elvss_cmds(struct dsi_display *display)
 {
 	struct dsi_panel *panel = display->panel;
-	u8 *rbuf, *tbuf;
+	// u8 *rbuf, *tbuf;
 
-	int rc = 0;
+	// int rc = 0;
 
-	rc = dsi_panel_tx_cmd_set_ptr(panel, &panel->elvss_dimming_offset_cmd);
-	if (rc) {
-		pr_err("[%s] failed to write elvss dimming offset cmds, rc=%d\n",
-				display->name, rc);
-		return rc;
-	}
+	// rc = dsi_panel_tx_cmd_set_ptr(panel, &panel->elvss_dimming_offset_cmd);
+	// if (rc) {
+	// 	pr_err("[%s] failed to write elvss dimming offset cmds, rc=%d\n",
+	// 			display->name, rc);
+	// 	return rc;
+	// }
 
-	rc = dsi_display_read_panel_config(display,
-			&panel->elvss_dimming_config);
-	if (rc <= 0) {
-		pr_err("[%s] failed to read elvss dimming config, rc=%d\n",
-				display->name, rc);
-		return rc;
-	}
+	// rc = dsi_display_read_panel_config(display,
+	// 		&panel->elvss_dimming_config);
+	// if (rc <= 0) {
+	// 	pr_err("[%s] failed to read elvss dimming config, rc=%d\n",
+	// 			display->name, rc);
+	// 	return rc;
+	// }
 
-	rbuf = panel->elvss_dimming_config.rbuf;
-	pr_info("[%s] elvss dimming result %x\n", display->name, rbuf[0]);
+	// rbuf = panel->elvss_dimming_config.rbuf;
+	// pr_info("[%s] elvss dimming result %x\n", display->name, rbuf[0]);
 
 	// tbuf = (u8 *)panel->fod_hbm_on_cmd.cmds[4].msg.tx_buf;
 	// tbuf[1] = rbuf[0] & 0x7F;
