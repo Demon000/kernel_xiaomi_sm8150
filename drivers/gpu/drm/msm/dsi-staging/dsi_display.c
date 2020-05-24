@@ -5071,7 +5071,6 @@ static ssize_t sysfs_fod_hbm_write(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct dsi_display *display;
-	struct dsi_panel *panel;
 	bool status;
 	int rc = 0;
 
@@ -5087,11 +5086,7 @@ static ssize_t sysfs_fod_hbm_write(struct device *dev,
 		return rc;
 	}
 
-	panel = display->panel;
-
-	mutex_lock(&panel->panel_lock);
-	dsi_panel_set_fod_hbm_status(panel, status);
-	mutex_unlock(&panel->panel_lock);
+	atomic_set(&display->panel->fod_hbm_enabled, status);
 
 	return count;
 }
