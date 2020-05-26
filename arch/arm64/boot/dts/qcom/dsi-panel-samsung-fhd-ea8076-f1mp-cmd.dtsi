@@ -252,10 +252,10 @@
 				qcom,mdss-dsi-h-sync-pulse = <0>;
 
 				qcom,mdss-dsi-dispparam-hbm-fod-off-command = [
-					15 01 00 00 01 00 02 53 20];
+					15 01 00 00 10 00 02 53 20];
 				qcom,mdss-dsi-dispparam-hbm-fod-off-command-state = "dsi_hs_mode";
 				qcom,mdss-dsi-dispparam-hbm-fod-on-command = [
-					15 01 00 00 01 00 02 53 E0];
+					15 01 00 00 02 00 02 53 E0];
 				qcom,mdss-dsi-dispparam-hbm-fod-on-command-state = "dsi_hs_mode";
 			};
 		};
