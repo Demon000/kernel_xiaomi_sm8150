@@ -269,7 +269,7 @@
 					39 00 00 00 00 00 02 B7 11
 					39 00 00 00 00 00 03 B7 01 43
 					39 00 00 00 00 00 03 F0 A5 A5
-					39 01 00 00 01 00 02 53 E0];
+					39 01 00 00 10 00 02 53 E0];
 				qcom,mdss-dsi-dispparam-hbm-fod-on-command-state = "dsi_hs_mode";
 			};
 		};
