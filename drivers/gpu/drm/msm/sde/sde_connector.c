@@ -18,6 +18,7 @@
 #include "sde_connector.h"
 #include "sde_encoder.h"
 #include <linux/backlight.h>
+#include <linux/msm_drm_notify.h>
 #include <linux/string.h>
 #include "dsi_drm.h"
 #include "dsi_display.h"
@@ -642,10 +643,12 @@ static int _sde_connector_update_dirty_properties(
 void sde_connector_update_fod_hbm(struct drm_connector *connector)
 {
 	static atomic_t effective_status = ATOMIC_INIT(false);
+	struct msm_drm_notifier notify_data;
 	struct sde_crtc_state *cstate;
 	struct sde_connector *c_conn;
 	struct dsi_display *display;
 	bool status;
+	int event;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -666,6 +669,10 @@ void sde_connector_update_fod_hbm(struct drm_connector *connector)
 	status = cstate->fod_dim_layer != NULL;
 	if (atomic_xchg(&effective_status, status) == status)
 		return;
+
+	event = status ? MSM_DRM_FOD_PRESS : MSM_DRM_FOD_UNPRESS;
+	notify_data.data = &event;
+	msm_drm_notifier_call_chain(MSM_DRM_EVENT_FOD, &notify_data);
 
 	mutex_lock(&display->panel->panel_lock);
 	dsi_panel_set_fod_hbm(display->panel, status);
