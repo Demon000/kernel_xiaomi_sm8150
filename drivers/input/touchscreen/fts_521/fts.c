@@ -3518,7 +3518,7 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 
 			// Sleep mode, report a touch and set a FOD id
 			__set_bit(0, &info->fod_id);
-			input_mt_slot(info->input_dev, info->fod_id);
+			input_mt_slot(info->input_dev, 0);
 			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
 			input_report_key(info->input_dev, BTN_TOUCH, 1);
 			input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
