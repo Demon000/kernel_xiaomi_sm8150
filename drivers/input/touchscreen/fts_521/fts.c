@@ -173,7 +173,6 @@ void release_all_touches(struct fts_ts_info *info)
 	input_sync(info->input_dev);
 	info->touch_id = 0;
 	info->touch_skip = 0;
-	info->fod_id = 0;
 #ifdef STYLUS_MODE
 	info->stylus_id = 0;
 #endif
@@ -2610,59 +2609,6 @@ static ssize_t fts_grip_area_store(struct device *dev,
 	}
 	return count;
 }
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-static ssize_t fts_fod_status_show(struct device *dev,
-				    struct device_attribute *attr, char *buf)
-{
-	struct fts_ts_info *info = dev_get_drvdata(dev);
-
-	return snprintf(buf, TSP_BUF_SIZE, "%d\n", info->fod_status);
-}
-
-static ssize_t fts_fod_status_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t count)
-{
-	struct fts_ts_info *info = dev_get_drvdata(dev);
-
-	logError(1, " %s %s buf:%c,count:%zu\n", tag, __func__, buf[0], count);
-	sscanf(buf, "%u", &info->fod_status);
-	queue_work(info->event_wq, &info->mode_handler_work);
-	logError(1, " %s %s end\n", tag, __func__);
-
-	return count;
-}
-
-static ssize_t fts_fod_test_store(struct device *dev,
-				     struct device_attribute *attr,
-				     const char *buf, size_t count)
-{
-	int value = 0;
-	struct fts_ts_info *info = dev_get_drvdata(dev);
-
-	logError(1, " %s %s,buf:%s,count:%zu\n", tag, __func__, buf, count);
-	sscanf(buf, "%u", &value);
-	if (value) {
-		input_report_key(info->input_dev, BTN_INFO, 1);
-		input_report_key(info->input_dev, KEY_INFO, 1);
-		input_sync(info->input_dev);
-		input_mt_slot(info->input_dev, 0);
-		input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
-		input_report_key(info->input_dev, BTN_TOUCH, 1);
-		input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
-		input_report_abs(info->input_dev, ABS_MT_POSITION_X, CENTER_X);
-		input_report_abs(info->input_dev, ABS_MT_POSITION_Y, CENTER_Y);
-		input_sync(info->input_dev);
-	} else {
-		input_mt_slot(info->input_dev, 0);
-		input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 0);
-		input_report_key(info->input_dev, BTN_INFO, 0);
-		input_report_key(info->input_dev, KEY_INFO, 0);
-		input_sync(info->input_dev);
-	}
-	return count;
-}
-#endif
 
 #ifdef CONFIG_SECURE_TOUCH
 static void fts_secure_touch_notify (struct fts_ts_info *info)
@@ -2973,12 +2919,6 @@ static struct attribute *fts_attr_group[] = {
 static DEVICE_ATTR(touch_suspend_notify, (S_IRUGO | S_IRGRP),
 		   fts_touch_suspend_notify_show, NULL);
 #endif
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-static DEVICE_ATTR(fod_status, (S_IRUGO | S_IWUSR | S_IWGRP),
-		   fts_fod_status_show, fts_fod_status_store);
-
-static DEVICE_ATTR(fod_test, (S_IRUGO | S_IWUSR | S_IWGRP), NULL, fts_fod_test_store);
-#endif
 
 #ifdef CONFIG_SECURE_TOUCH
 DEVICE_ATTR(secure_touch_enable, (S_IRUGO | S_IWUSR | S_IWGRP), fts_secure_touch_enable_show,  fts_secure_touch_enable_store);
@@ -3022,20 +2962,6 @@ static void fts_nop_event_handler(struct fts_ts_info *info,
 		 tag, __func__, event[0], event[1], event[2], event[3],
 		 event[4], event[5], event[6], event[7]);
 }
-
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-static bool fts_is_in_fodarea(int x, int y)
-{
-	if ((x > FOD_LX && x < FOD_LX + FOD_SIDE) && (y > FOD_LY && y < FOD_LY +
-	FOD_SIDE))
-		return true;
-	else
-		return false;
-}
-
-static bool finger_report_flag;
-
-#endif
 
 /**
 * Event handler for enter and motion events (EVT_ID_ENTER_POINT, EVT_ID_MOTION_POINT )
@@ -3092,17 +3018,6 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 		return;
 	}
 
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	if (info->fod_status && fts_is_in_fodarea(x, y)) {
-		info->fod_id = 0;
-		__set_bit(touch_id, &info->fod_id);
-	} else if (__test_and_clear_bit(touch_id, &info->fod_id)) {
-		input_report_key(info->input_dev, BTN_INFO, 0);
-		input_report_key(info->input_dev, KEY_INFO, 0);
-		input_sync(info->input_dev);
-	}
-#endif
-
 	input_mt_slot(info->input_dev, touch_id);
 	input_mt_report_slot_state(info->input_dev, tool, 1);
 	input_report_key(info->input_dev, BTN_TOUCH, is_touching);
@@ -3126,27 +3041,8 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 {
 	unsigned int tool = MT_TOOL_FINGER;
 	unsigned int is_touching = 0;
-	unsigned char touch_id;
-	u8 touch_type;
-
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	// Special leave event for the FOD in sleep case
-	if (event[1] == 0xb5) {
-		// If we don't have a valid FOD id, we don't have what to leave
-		// If we have other touch ids, we're not in sleep
-		if (!info->fod_id || info->touch_id) {
-			return;
-		}
-
-		touch_id = ffs(info->fod_id) - 1;
-		touch_type = TOUCH_TYPE_FINGER;
-	} else {
-#endif
-		touch_type = event[1] & 0x0F;
-		touch_id = (event[1] & 0xF0) >> 4;
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	}
-#endif
+	unsigned char touch_id = (event[1] & 0xF0) >> 4;
+	u8 touch_type = event[1] & 0x0F;
 
 	switch (touch_type) {
 #ifdef STYLUS_MODE
@@ -3176,14 +3072,6 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 				tag, __func__, touch_type);
 		return;
 	}
-
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	if (__test_and_clear_bit(touch_id, &info->fod_id)) {
-		input_report_key(info->input_dev, BTN_INFO, 0);
-		input_report_key(info->input_dev, KEY_INFO, 0);
-		input_sync(info->input_dev);
-	}
-#endif
 
 	input_mt_slot(info->input_dev, touch_id);
 	input_mt_report_slot_state(info->input_dev, tool, 0);
@@ -3496,49 +3384,8 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 	bool get_coords = true;
 	int value;
 
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	int area_size = (event[9] << 8) | (event[8]);
-	int x = (event[4] << 8) | (event[3]);
-	int y = (event[6] << 8) | (event[5]);
-#endif
-
 	if (event[0] != EVT_ID_USER_REPORT || event[1] != EVT_TYPE_USER_GESTURE)
 		return;
-
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	if (info->fod_status && event[2] == GEST_ID_LONG_PRESS) {
-		if (fts_is_in_fodarea(x, y)) {
-			input_report_key(info->input_dev, BTN_INFO, 1);
-			input_report_key(info->input_dev, KEY_INFO, 1);
-			input_sync(info->input_dev);
-
-			// Active mode, the touch has already been reported
-			if (info->fod_id)
-				return;
-
-			// Sleep mode, report a touch and set a FOD id
-			__set_bit(0, &info->fod_id);
-			input_mt_slot(info->input_dev, 0);
-			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
-			input_report_key(info->input_dev, BTN_TOUCH, 1);
-			input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
-			input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
-			input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
-			input_report_abs(info->input_dev, ABS_MT_DISTANCE, DISTANCE_MIN);
-			input_report_abs(info->input_dev, ABS_MT_TOUCH_MAJOR, area_size);
-			input_sync(info->input_dev);
-		}
-
-		return;
-	} else if (info->fod_status && event[2] == GEST_ID_SINGTAP) {
-		input_report_key(info->input_dev, KEY_GOTO, 1);
-		input_sync(info->input_dev);
-		input_report_key(info->input_dev, KEY_GOTO, 0);
-		input_sync(info->input_dev);
-
-		return;
-	}
-#endif
 
 	if (!info->gesture_enabled)
 		return;
@@ -4350,11 +4197,6 @@ static int fts_init_sensing(struct fts_ts_info *info)
 #endif
 	error |= fts_interrupt_install(info);
 	error |= fts_mode_handler(info, 0);
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	error |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
-	mdelay(WAIT_AFTER_SENSEOFF);
-	error |= setScanMode(SCAN_MODE_ACTIVE, 0x01);
-#endif
 	error |= fts_enableInterrupt();
 
 	if (error < OK)
@@ -4379,65 +4221,31 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 	int res = OK;
 	int ret = OK;
 	u8 settings[4] = { 0 };
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	u8 gesture_cmd[6] = {0xA2, 0x03, 0x20, 0x00, 0x00, 0x01};
-	u8 single_only_cmd[4] = {0xC0, 0x02, 0x00, 0x00};
-	u8 single_double_cmd[4] = {0xC0, 0x02, 0x01, 0x1E};
-#endif
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	mutex_lock(&info->fod_mutex);
-#endif
 	info->mode = MODE_NOTHING;
 	logError(0, "%s %s: Mode Handler starting... \n", tag, __func__);
 	switch (info->resume_bit) {
 	case 0:
 		logError(0, "%s %s: Screen OFF... \n", tag, __func__);
 
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (info->fod_status) {
-			logError(1, "%s %s: Sense OFF by FOD \n", tag, __func__);
-			logError(1, "%s %s,send long press and gesture cmd\n", tag, __func__);
-			res = fts_write_dma_safe(gesture_cmd, ARRAY_SIZE(gesture_cmd));
-			if (res < OK)
-					logError(1, "%s %s: enter gesture and longpress failed! ERROR %08X recovery in senseOff...\n",
-						 tag, __func__, res);
-			res = setScanMode(SCAN_MODE_LOW_POWER, 0);
-			res |= ret;
-			if (info->gesture_enabled == 1) {
-				res = fts_write_dma_safe(single_double_cmd, ARRAY_SIZE(single_double_cmd));
-				if (res < OK)
-						logError(1, "%s %s: set single and double tap delay time failed! ERROR %08X\n", tag, __func__, res);
-			} else {
-				res = fts_write_dma_safe(single_only_cmd, ARRAY_SIZE(single_only_cmd));
-				if (res < OK)
-						logError(1, "%s %s: set single only delay time failed! ERROR %08X\n", tag, __func__, res);
-			}
-			info->fod_status_set = true;
-		} else {
-#endif
-			logError(1, "%s %s: Sense OFF! \n", tag, __func__);
-			ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
-			res |= ret;
+		logError(1, "%s %s: Sense OFF! \n", tag, __func__);
+		ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
+		res |= ret;
 
-			if (info->gesture_enabled == 1) {
-				logError(1, "%s %s: enter in gesture mode ! \n", tag,
-					 __func__);
-				res = enterGestureMode(isSystemResettedDown());
-				if (res >= OK) {
-					fromIDtoMask(FEAT_SEL_GESTURE,
-						     (u8 *)&info->mode,
-						     sizeof(info->mode));
-					MODE_LOW_POWER(info->mode, 0);
-				} else {
-					logError(1,
-						 "%s %s: enterGestureMode failed! ERROR %08X recovery in senseOff...\n",
-						 tag, __func__, res);
-				}
+		if (info->gesture_enabled == 1) {
+			logError(1, "%s %s: enter in gesture mode ! \n", tag,
+				 __func__);
+			res = enterGestureMode(isSystemResettedDown());
+			if (res >= OK) {
+				fromIDtoMask(FEAT_SEL_GESTURE,
+					     (u8 *)&info->mode,
+					     sizeof(info->mode));
+				MODE_LOW_POWER(info->mode, 0);
+			} else {
+				logError(1,
+					 "%s %s: enterGestureMode failed! ERROR %08X recovery in senseOff...\n",
+					 tag, __func__, res);
 			}
-			info->fod_status_set = false;
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
 		}
-#endif
 		setSystemResetedDown(0);
 		break;
 
@@ -4554,31 +4362,11 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 
 		}
 #endif
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (info->fod_id) {
-			logError(1, "%s %s: Sense OFF \n", tag, __func__);
-			res |= setScanMode(SCAN_MODE_ACTIVE, 0x00);
-			logError(1, "%s %s: Sense ON without cal \n", tag, __func__);
-			res |= setScanMode(SCAN_MODE_ACTIVE, 0x20);
-		} else {
-			logError(1, "%s %s: Sense ON\n", tag, __func__);
-			res |= setScanMode(SCAN_MODE_ACTIVE, 0x01);
-		}
-		info->sensor_scan = true;
-		if (info->fod_status) {
-			res = fts_write_dma_safe(gesture_cmd, ARRAY_SIZE(gesture_cmd));
-			if (res < OK)
-					logError(1, "%s %s: enter gesture and longpress failed! ERROR %08X recovery in senseOff...\n",
-						 tag, __func__, res);
-			info->fod_status_set = true;
-		}
-#else
 		settings[0] = 0x01;
 		logError(1, "%s %s: Sense ON! \n", tag, __func__);
 		res |= setScanMode(SCAN_MODE_ACTIVE, settings[0]);
 		info->mode |= (SCAN_MODE_ACTIVE << 24);
 		MODE_ACTIVE(info->mode, settings[0]);
-#endif
 		setSystemResetedUp(0);
 		break;
 
@@ -4591,9 +4379,6 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 
 	logError(0, "%s %s: Mode Handler finished! res = %08X mode = %08X \n",
 		 tag, __func__, res, info->mode);
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	mutex_unlock(&info->fod_mutex);
-#endif
 	return res;
 
 }
@@ -4620,15 +4405,8 @@ static void fts_resume_work(struct work_struct *work)
 	fts_secure_stop(info, true);
 #endif
 	info->resume_bit = 1;
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	if (!info->fod_id) {
-#endif
 	fts_system_reset();
 	release_all_touches(info);
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	}
-#endif
-	info->fod_status_set = false;
 	fts_mode_handler(info, 0);
 	info->sensor_sleep = false;
 
@@ -4653,7 +4431,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info->sensor_sleep = true;
 
-	if (info->gesture_enabled || info->fod_status)
+	if (info->gesture_enabled)
 		fts_enableInterrupt();
 #ifdef CONFIG_FTS_TOUCH_COUNT_DUMP
 	sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL,
@@ -5471,14 +5249,10 @@ static int fts_pm_suspend(struct device *dev)
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-#ifndef CONFIG_FTS_FOD_AREA_REPORT
 	if (device_may_wakeup(dev) && info->gesture_enabled) {
 		logError(1, "%s enable touch irq wake\n", tag);
 		enable_irq_wake(info->client->irq);
 	}
-#else
-	enable_irq_wake(info->client->irq);
-#endif
 	info->tp_pm_suspend = true;
 	reinit_completion(&info->pm_resume_completion);
 
@@ -5490,14 +5264,10 @@ static int fts_pm_resume(struct device *dev)
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-#ifndef CONFIG_FTS_FOD_AREA_REPORT
 	if (device_may_wakeup(dev) && info->gesture_enabled) {
 		logError(1, "%s disable touch irq wake\n", tag);
 		disable_irq_wake(info->client->irq);
 	}
-#else
-	disable_irq_wake(info->client->irq);
-#endif
 	info->tp_pm_suspend = false;
 	complete(&info->pm_resume_completion);
 
@@ -5863,10 +5633,6 @@ static int fts_probe(struct spi_device *client)
 			     AREA_MAX, 0, 0);
 	input_set_abs_params(info->input_dev, ABS_MT_WIDTH_MAJOR, AREA_MIN,
 			     AREA_MAX, 0, 0);
-
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	/*input_set_abs_params(info->input_dev, ABS_MT_PRESSURE, PRESSURE_MIN, PRESSURE_MAX, 0, 0);*/
-#endif
 	input_set_abs_params(info->input_dev, ABS_MT_DISTANCE, DISTANCE_MIN,
 			     DISTANCE_MAX, 0, 0);
 
@@ -5905,11 +5671,6 @@ static int fts_probe(struct spi_device *client)
 	input_set_capability(info->input_dev, EV_KEY, KEY_HOMEPAGE);
 	input_set_capability(info->input_dev, EV_KEY, KEY_BACK);
 	input_set_capability(info->input_dev, EV_KEY, KEY_MENU);
-#endif
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	input_set_capability(info->input_dev, EV_KEY, BTN_INFO);
-	input_set_capability(info->input_dev, EV_KEY, KEY_INFO);
-	input_set_capability(info->input_dev, EV_KEY, KEY_GOTO);
 #endif
 	mutex_init(&(info->input_report_mutex));
 #ifdef GESTURE_MODE
@@ -6082,22 +5843,6 @@ static int fts_probe(struct spi_device *client)
 	if (error) {
 		logError(1, "%s ERROR: Failed to create sysfs group!\n", tag);
 		goto ProbeErrorExit_8;
-	}
-#endif
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-	mutex_init(&(info->fod_mutex));
-
-	error =
-	    sysfs_create_file(&info->fts_touch_dev->kobj,
-			      &dev_attr_fod_status.attr);
-	if (error) {
-		logError(1, "%s ERROR: Failed to create fod_status sysfs group!\n", tag);
-	}
-	error =
-	    sysfs_create_file(&info->fts_touch_dev->kobj,
-			      &dev_attr_fod_test.attr);
-	if (error) {
-		logError(1, "%s ERROR: Failed to create fod_test sysfs group!\n", tag);
 	}
 #endif
 	info->tp_lockdown_info_proc =

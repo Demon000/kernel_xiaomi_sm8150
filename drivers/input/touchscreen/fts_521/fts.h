@@ -345,11 +345,7 @@ struct fts_ts_info {
 	wait_queue_head_t 	wait_queue;
 	struct completion tp_reset_completion;
 	atomic_t system_is_resetting;
-	unsigned int fod_status;
-	unsigned long fod_id;
-	struct mutex fod_mutex;
 	struct mutex cmd_update_mutex;
-	bool fod_status_set;
 	bool p_sensor_changed;
 	bool p_sensor_switch;
 	bool palm_sensor_changed;
@@ -370,16 +366,6 @@ extern int input_unregister_notifier_client(struct notifier_block *nb);
 
 extern int fts_proc_init(void);
 extern int fts_proc_remove(void);
-#ifdef CONFIG_FTS_FOD_AREA_REPORT
-#define CENTER_X 540
-#define CENTER_Y 2005
-#define CIRCLE_R 87
-#define FOD_LX 420
-#define FOD_LY 1885
-#define FOD_SIDE 242
-bool fts_is_infod(void);
-void fts_get_pointer(int *touch_flag, int *x, int *y);
-#endif
 void fts_restore_regvalues(void);
 
 #endif
