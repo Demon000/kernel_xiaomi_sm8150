@@ -3096,6 +3096,9 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 	if (info->fod_status && fts_is_in_fodarea(x, y)) {
 		info->fod_id = 0;
 		__set_bit(touch_id, &info->fod_id);
+		input_report_key(info->input_dev, BTN_INFO, 1);
+		input_report_key(info->input_dev, KEY_INFO, 1);
+		input_sync(info->input_dev);
 	} else if (__test_and_clear_bit(touch_id, &info->fod_id)) {
 		input_report_key(info->input_dev, BTN_INFO, 0);
 		input_report_key(info->input_dev, KEY_INFO, 0);
@@ -3508,15 +3511,15 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 	if (info->fod_status && event[2] == GEST_ID_LONG_PRESS) {
 		if (fts_is_in_fodarea(x, y)) {
+			if (info->fod_id)
+				// Active mode, the touch has already been reported
+				return;
+
+			// Sleep mode, report a touch and set a FOD id
 			input_report_key(info->input_dev, BTN_INFO, 1);
 			input_report_key(info->input_dev, KEY_INFO, 1);
 			input_sync(info->input_dev);
 
-			// Active mode, the touch has already been reported
-			if (info->fod_id)
-				return;
-
-			// Sleep mode, report a touch and set a FOD id
 			__set_bit(0, &info->fod_id);
 			input_mt_slot(info->input_dev, info->fod_id);
 			input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
