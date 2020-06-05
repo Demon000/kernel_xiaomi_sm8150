@@ -4480,6 +4480,16 @@ static int fts_drm_state_chg_callback(struct notifier_block *nb,
 
 			flush_workqueue(info->event_wq);
 			queue_work(info->event_wq, &info->resume_work);
+		} else if (val == MSM_DRM_EVENT_FOD) {
+			if (blank == MSM_DRM_FOD_PRESS) {
+				input_report_key(info->input_dev, BTN_INFO, 1);
+				input_report_key(info->input_dev, KEY_INFO, 1);
+				input_sync(info->input_dev);
+			} else if (blank == MSM_DRM_FOD_UNPRESS) {
+				input_report_key(info->input_dev, BTN_INFO, 0);
+				input_report_key(info->input_dev, KEY_INFO, 0);
+				input_sync(info->input_dev);
+			}
 		}
 	}
 	return NOTIFY_OK;
@@ -5672,6 +5682,8 @@ static int fts_probe(struct spi_device *client)
 	input_set_capability(info->input_dev, EV_KEY, KEY_BACK);
 	input_set_capability(info->input_dev, EV_KEY, KEY_MENU);
 #endif
+	input_set_capability(info->input_dev, EV_KEY, BTN_INFO);
+	input_set_capability(info->input_dev, EV_KEY, KEY_INFO);
 	mutex_init(&(info->input_report_mutex));
 #ifdef GESTURE_MODE
 	mutex_init(&gestureMask_mutex);
