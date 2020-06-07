@@ -345,11 +345,6 @@ struct fts_ts_info {
 	wait_queue_head_t 	wait_queue;
 	struct completion tp_reset_completion;
 	atomic_t system_is_resetting;
-	struct mutex cmd_update_mutex;
-	bool p_sensor_changed;
-	bool p_sensor_switch;
-	bool palm_sensor_changed;
-	bool palm_sensor_switch;
 	bool tp_pm_suspend;
 	struct completion pm_resume_completion;
 };
