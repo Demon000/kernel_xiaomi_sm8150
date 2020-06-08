@@ -305,7 +305,6 @@ struct fts_ts_info {
 	struct notifier_block notifier;
 	struct notifier_block bl_notifier;
 	bool sensor_sleep;
-	bool sensor_scan;
 	struct pinctrl *ts_pinctrl;
 	struct pinctrl_state *pinctrl_state_active;
 	struct pinctrl_state *pinctrl_state_suspend;

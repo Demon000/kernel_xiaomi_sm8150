@@ -5800,7 +5800,6 @@ static int fts_probe(struct spi_device *client)
 	}
 	INIT_DELAYED_WORK(&info->fwu_work, fts_fw_update_auto);
 #endif
-	info->sensor_scan = true;
 
 	logError(0, "%s SET Device File Nodes: \n", tag);
 	/* sysfs stuff */
