@@ -2610,6 +2610,33 @@ static ssize_t fts_grip_area_store(struct device *dev,
 	return count;
 }
 
+static ssize_t fts_fod_status_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct fts_ts_info *info = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", info->fod_status);
+}
+
+static ssize_t fts_fod_status_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct fts_ts_info *info = dev_get_drvdata(dev);
+	bool status;
+	int rc;
+
+	rc = kstrtobool(buf, &status);
+	if (rc) {
+		logError(1, "%s %s: kstrtobool failed. rc=%d\n", tag, __func__, rc);
+		return rc;
+	}
+
+	info->fod_status = status;
+	queue_work(info->event_wq, &info->mode_handler_work);
+
+	return count;
+}
+
 #ifdef CONFIG_SECURE_TOUCH
 static void fts_secure_touch_notify (struct fts_ts_info *info)
 {
@@ -2819,6 +2846,10 @@ static DEVICE_ATTR(ss_ix_total, (S_IRUGO), fts_ss_ix_total_show, NULL);
 static DEVICE_ATTR(ss_hover, (S_IRUGO), fts_hover_raw_show, NULL);
 static DEVICE_ATTR(stm_fts_cmd, (S_IRUGO | S_IWUSR | S_IWGRP), stm_fts_cmd_show,
 		   stm_fts_cmd_store);
+static DEVICE_ATTR(fod_status, (S_IRUGO | S_IWUSR | S_IWGRP),
+		fts_fod_status_show,
+		fts_fod_status_store);
+
 #ifdef USE_ONE_FILE_NODE
 static DEVICE_ATTR(feature_enable, (S_IRUGO | S_IWUSR | S_IWGRP),
 		   fts_feature_enable_show, fts_feature_enable_store);
@@ -3043,6 +3074,11 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 	unsigned int is_touching = 0;
 	unsigned char touch_id = (event[1] & 0xF0) >> 4;
 	u8 touch_type = event[1] & 0x0F;
+
+	if (event[1] == 0xb5) {
+		logError(1, "%s  %s: fod low power unpress event\n", tag, __func__);
+		return;
+	}
 
 	switch (touch_type) {
 #ifdef STYLUS_MODE
@@ -3386,6 +3422,14 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 
 	if (event[0] != EVT_ID_USER_REPORT || event[1] != EVT_TYPE_USER_GESTURE)
 		return;
+
+	if (event[2] == GEST_ID_LONG_PRESS) {
+		logError(1, "%s  %s: fod low power long press event\n", tag, __func__);
+		return;
+	} else if (event[2] == GEST_ID_SINGTAP) {
+		logError(1, "%s  %s: fod low power single press event\n", tag, __func__);
+		return;
+	}
 
 	if (!info->gesture_enabled)
 		return;
@@ -4221,29 +4265,53 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 	int res = OK;
 	int ret = OK;
 	u8 settings[4] = { 0 };
+	u8 gesture_cmd[6] = {0xA2, 0x03, 0x20, 0x00, 0x00, 0x01};
+	u8 single_only_cmd[4] = {0xC0, 0x02, 0x00, 0x00};
+	u8 single_double_cmd[4] = {0xC0, 0x02, 0x01, 0x1E};
+
 	info->mode = MODE_NOTHING;
 	logError(0, "%s %s: Mode Handler starting... \n", tag, __func__);
 	switch (info->resume_bit) {
 	case 0:
 		logError(0, "%s %s: Screen OFF... \n", tag, __func__);
 
-		logError(1, "%s %s: Sense OFF! \n", tag, __func__);
-		ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
-		res |= ret;
+		if (info->fod_status) {
+			logError(1, "%s %s: Sense LOW POWER\n", tag, __func__);
+			res = setScanMode(SCAN_MODE_LOW_POWER, 0);
+			res |= ret;
 
-		if (info->gesture_enabled == 1) {
-			logError(1, "%s %s: enter in gesture mode ! \n", tag,
-				 __func__);
-			res = enterGestureMode(isSystemResettedDown());
-			if (res >= OK) {
-				fromIDtoMask(FEAT_SEL_GESTURE,
-					     (u8 *)&info->mode,
-					     sizeof(info->mode));
-				MODE_LOW_POWER(info->mode, 0);
+			res = fts_write_dma_safe(gesture_cmd, ARRAY_SIZE(gesture_cmd));
+			if (res < OK)
+					logError(1, "%s %s: FOD gesture command failed! ERROR %08X\n",
+							tag, __func__, res);
+
+			if (info->gesture_enabled == 1) {
+				res = fts_write_dma_safe(single_double_cmd, ARRAY_SIZE(single_double_cmd));
+				if (res < OK)
+						logError(1, "%s %s: single and double tap delay time command failed! ERROR %08X\n",
+								tag, __func__, res);
 			} else {
-				logError(1,
-					 "%s %s: enterGestureMode failed! ERROR %08X recovery in senseOff...\n",
-					 tag, __func__, res);
+				res = fts_write_dma_safe(single_only_cmd, ARRAY_SIZE(single_only_cmd));
+				if (res < OK)
+						logError(1, "%s %s: set single only delay time failed! ERROR %08X\n",
+								tag, __func__, res);
+			}
+		} else {
+			logError(1, "%s %s: Sense OFF\n", tag, __func__);
+			ret = setScanMode(SCAN_MODE_ACTIVE, 0x00);
+			res |= ret;
+
+			if (info->gesture_enabled == 1) {
+				res = enterGestureMode(isSystemResettedDown());
+				if (res >= OK) {
+					fromIDtoMask(FEAT_SEL_GESTURE,
+						     (u8 *)&info->mode,
+						     sizeof(info->mode));
+					MODE_LOW_POWER(info->mode, 0);
+				} else {
+					logError(1, "%s %s: enter gesture mode command failed! ERROR %08X\n",
+							tag, __func__, res);
+				}
 			}
 		}
 		setSystemResetedDown(0);
@@ -4431,7 +4499,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info->sensor_sleep = true;
 
-	if (info->gesture_enabled)
+	if (info->gesture_enabled || info->fod_status)
 		fts_enableInterrupt();
 #ifdef CONFIG_FTS_TOUCH_COUNT_DUMP
 	sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL,
@@ -5259,7 +5327,7 @@ static int fts_pm_suspend(struct device *dev)
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev) && info->gesture_enabled) {
+	if (device_may_wakeup(dev) && (info->gesture_enabled || info->fod_status)) {
 		logError(1, "%s enable touch irq wake\n", tag);
 		enable_irq_wake(info->client->irq);
 	}
@@ -5274,7 +5342,7 @@ static int fts_pm_resume(struct device *dev)
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-	if (device_may_wakeup(dev) && info->gesture_enabled) {
+	if (device_may_wakeup(dev) && (info->gesture_enabled || info->fod_status)) {
 		logError(1, "%s disable touch irq wake\n", tag);
 		disable_irq_wake(info->client->irq);
 	}
@@ -5856,6 +5924,12 @@ static int fts_probe(struct spi_device *client)
 		goto ProbeErrorExit_8;
 	}
 #endif
+
+	error = sysfs_create_file(&info->fts_touch_dev->kobj,
+			&dev_attr_fod_status.attr);
+	if (error)
+		logError(1, "%s ERROR: Failed to create fod_status sysfs group!\n", tag);
+
 	info->tp_lockdown_info_proc =
 	    proc_create("tp_lockdown_info", 0444, NULL, &fts_lockdown_info_ops);
 	info->tp_selftest_proc =

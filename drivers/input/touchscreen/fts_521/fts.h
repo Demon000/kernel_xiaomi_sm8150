@@ -346,6 +346,8 @@ struct fts_ts_info {
 	atomic_t system_is_resetting;
 	bool tp_pm_suspend;
 	struct completion pm_resume_completion;
+
+	bool fod_status;
 };
 
 struct fts_mode_switch {
