@@ -3127,10 +3127,9 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 
 	input_mt_report_slot_state(info->input_dev, tool, 1);
 	input_report_key(info->input_dev, BTN_TOUCH, touch_condition);
-	if (touch_condition)
-		input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
-
-	/*input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, touchId); */
+		if (touch_condition)
+			input_report_key(info->input_dev, BTN_TOOL_FINGER, 1);
+		/*input_report_abs(info->input_dev, ABS_MT_TRACKING_ID, touchId); */
 		input_report_abs(info->input_dev, ABS_MT_POSITION_X, x);
 		input_report_abs(info->input_dev, ABS_MT_POSITION_Y, y);
 		input_report_abs(info->input_dev, ABS_MT_TOUCH_MINOR, z);
@@ -3166,15 +3165,6 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 		"%s  %s :  Event 0x%02x - ID[%d], (x, y, z) = (%3d, %3d, %3d) type = %d, size = %d, overlap:%d\n",
 		tag, __func__, *event, touchId, x, y, z, touchType, area_size,
 		info->fod_overlap);
-	if (event[0] == 0x13)
-		logError(1,
-			"%s  %s :  Event 0x%02x - Press ID[%d] type = %d\n", tag,
-				__func__, event[0], touchId, touchType);
-
-#ifndef CONFIG_FTS_FOD_AREA_REPORT
-no_report:
-	return;
-#endif
 }
 
 /**
@@ -3293,11 +3283,7 @@ static void fts_leave_pointer_event_handler(struct fts_ts_info *info,
 			__func__, touchId, touchType);
 	else
 #endif
-		logError(1,
-			"%s  %s :  Event 0x%02x - release ID[%d] type = %d\n", tag,
-			__func__, event[0], touchId, touchType);
-
-	input_sync(info->input_dev);
+     input_sync(info->input_dev);
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 exit:
 #endif
@@ -5843,8 +5829,7 @@ static int fts_probe(struct spi_device *client)
 	int retval;
 	int skip_5_1 = 0;
 	u16 bus_type;
-	u8 *tp_maker;
-
+	
 	logError(1, "%s %s: driver ver: %s\n", tag, __func__,
 		 FTS_TS_DRV_VERSION);
 
@@ -6197,13 +6182,6 @@ static int fts_probe(struct spi_device *client)
 		logError(1, "%s Error: can not create /proc file! \n", tag);
 	info->dbclick_count = 0;
 
-	tp_maker = kzalloc(20, GFP_KERNEL);
-	if (tp_maker == NULL)
-		logError(1, "%s fail to alloc vendor name memory\n", tag);
-	else {
-		kfree(tp_maker);
-		tp_maker = NULL;
-	}
 	device_init_wakeup(&client->dev, 1);
 
 	init_completion(&info->pm_resume_completion);
